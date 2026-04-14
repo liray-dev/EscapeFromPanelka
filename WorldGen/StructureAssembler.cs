@@ -43,9 +43,19 @@ public sealed class StructureAssembler
             placedByNodeId[step.NodeId] = placedModule;
         }
 
-        sector.PlayerSpawn = placedByNodeId["safe_block"].Position + new Vector3(0f, 0.5f, 0f);
+        var safeBlock = placedByNodeId["safe_block"];
+        var serviceNook = placedByNodeId["service_nook"];
+        var hallB = placedByNodeId["hall_b"];
+        var objectiveRoom = placedByNodeId["objective_room"];
+
+        sector.SafeBlockCenter = safeBlock.Position;
+        sector.ExtractionConsolePoint = safeBlock.ToWorldPosition(new Vector3(2.15f, 0.95f, -1.25f));
+        sector.PowerSwitchPoint = serviceNook.ToWorldPosition(new Vector3(2.05f, 0.95f, -1.10f));
+        sector.ObjectivePoint = objectiveRoom.Position + new Vector3(0f, 0.85f, 0f);
+        sector.PlayerSpawn = sector.SafeBlockCenter + new Vector3(0f, 0.5f, 0f);
 
         BuildGeometry(sector);
+        BuildFeatures(sector, safeBlock, serviceNook, hallB);
         SpawnProps(sector, library, rng);
         ComputeBounds(sector);
         return sector;
@@ -58,6 +68,45 @@ public sealed class StructureAssembler
             AddFloor(sector.StaticGeometry, module);
             AddPerimeterWalls(sector.StaticGeometry, module);
         }
+    }
+
+    private static void BuildFeatures(ProceduralSector sector, PlacedModule safeBlock, PlacedModule serviceNook, PlacedModule hallB)
+    {
+        var extractionConsole = new WorldRenderable(
+            WorldPrimitiveType.Cube,
+            CreateWorldTransform(
+                safeBlock,
+                new Vector3(2.15f, 0.52f, -1.25f),
+                Vector3.Zero,
+                new Vector3(0.38f, 1.04f, 0.24f)),
+            new Vector4(0.32f, 0.58f, 0.64f, 1f));
+
+        var powerConsole = new WorldRenderable(
+            WorldPrimitiveType.Cube,
+            CreateWorldTransform(
+                serviceNook,
+                new Vector3(2.05f, 0.56f, -1.10f),
+                Vector3.Zero,
+                new Vector3(0.36f, 1.12f, 0.24f)),
+            new Vector4(0.64f, 0.52f, 0.18f, 1f));
+
+        sector.FeatureGeometry.Add(extractionConsole);
+        sector.FeatureGeometry.Add(powerConsole);
+
+        var barrierRenderable = new WorldRenderable(
+            WorldPrimitiveType.Cube,
+            CreateWorldTransform(
+                hallB,
+                new Vector3(hallB.Definition.Width * 0.5f - 0.12f, 1.15f, 0f),
+                Vector3.Zero,
+                new Vector3(0.32f, 2.3f, 1.86f)),
+            new Vector4(0.66f, 0.20f, 0.18f, 1f));
+
+        sector.LockablePassages.Add(new LockablePassage(
+            "bulkhead_archive",
+            "service_power",
+            "Аварийная переборка к архиву",
+            barrierRenderable));
     }
 
     private static void AddFloor(List<WorldRenderable> geometry, PlacedModule module)

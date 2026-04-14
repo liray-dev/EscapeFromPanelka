@@ -82,7 +82,7 @@ public sealed class GameplayState : IGameState
 
     public void FixedUpdate(double fixedDeltaTime)
     {
-        _world?.Tick((float)fixedDeltaTime, _movementInput);
+        _world?.Tick((float)fixedDeltaTime, _movementInput, _context.Input.IsKeyPressed(Key.E));
     }
 
     public void Render(float alpha)

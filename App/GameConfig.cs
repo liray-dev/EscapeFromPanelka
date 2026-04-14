@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace EFP.App;
 
 public sealed class GameConfig
@@ -27,6 +29,11 @@ public sealed class GameplayConfig
     public float PlayerMoveSpeed { get; set; } = 5.0f;
     public float PlayerRotationSensitivity { get; set; } = 0.01f;
     public float FloorSize { get; set; } = 24.0f;
+    public float PlayerCollisionRadius { get; set; } = 0.34f;
+    public float InteractRadius { get; set; } = 1.6f;
+    public float RaidDurationSeconds { get; set; } = 165.0f;
+    public float PressureThresholdSeconds { get; set; } = 90.0f;
+    public float CriticalThresholdSeconds { get; set; } = 42.0f;
 }
 
 public sealed class CameraConfig
