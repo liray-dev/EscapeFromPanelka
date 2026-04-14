@@ -10,16 +10,24 @@ public sealed class SceneRenderer : IDisposable
 {
     private readonly GL _gl;
     private readonly GameResources _resources;
-
-    private ShaderProgram? _shader;
-    private Mesh? _planeMesh;
     private Mesh? _cubeMesh;
     private Mesh? _gridMesh;
+    private Mesh? _planeMesh;
+
+    private ShaderProgram? _shader;
 
     public SceneRenderer(GL gl, GameResources resources)
     {
         _gl = gl;
         _resources = resources;
+    }
+
+    public void Dispose()
+    {
+        _gridMesh?.Dispose();
+        _cubeMesh?.Dispose();
+        _planeMesh?.Dispose();
+        _shader?.Dispose();
     }
 
     public void Load()
@@ -54,19 +62,14 @@ public sealed class SceneRenderer : IDisposable
 
     public void RenderWorld(WorldModel world, TopDownCamera camera)
     {
-        if (_shader is null || _planeMesh is null || _cubeMesh is null || _gridMesh is null)
-        {
-            return;
-        }
+        if (_shader is null || _planeMesh is null || _cubeMesh is null || _gridMesh is null) return;
 
         _shader.Use();
         RenderMesh(_planeMesh, world.FloorTransform.CreateModelMatrix(), camera);
         RenderMesh(_gridMesh, Matrix4x4.Identity, camera);
 
         foreach (var blockTransform in world.DebugBlocks)
-        {
             RenderMesh(_cubeMesh, blockTransform.CreateModelMatrix(), camera);
-        }
 
         RenderMesh(_cubeMesh, world.Player.Transform.CreateModelMatrix(), camera);
     }
@@ -77,13 +80,5 @@ public sealed class SceneRenderer : IDisposable
         _shader!.SetMatrix4("uModel", model);
         _shader.SetMatrix4("uMvp", mvp);
         mesh.Draw();
-    }
-
-    public void Dispose()
-    {
-        _gridMesh?.Dispose();
-        _cubeMesh?.Dispose();
-        _planeMesh?.Dispose();
-        _shader?.Dispose();
     }
 }

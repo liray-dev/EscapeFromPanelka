@@ -39,7 +39,7 @@ public sealed class TopDownCamera
         var pitch = MathHelperEx.DegreesToRadians(Math.Clamp(_config.PitchDegrees, 15f, 80f));
 
         var horizontalRadius = _config.Distance * MathF.Cos(pitch);
-        var verticalOffset = _config.Height + (_config.Distance * MathF.Sin(pitch));
+        var verticalOffset = _config.Height + _config.Distance * MathF.Sin(pitch);
 
         var offset = new Vector3(
             MathF.Cos(yaw) * horizontalRadius,

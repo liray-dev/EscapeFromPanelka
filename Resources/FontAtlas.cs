@@ -12,9 +12,9 @@ public sealed class FontAtlas(Texture2D texture, float lineHeight, float baseSiz
 
     public FontGlyph GetGlyph(char character)
     {
-        if (glyphs.TryGetValue(character, out var glyph) 
+        if (glyphs.TryGetValue(character, out var glyph)
             || glyphs.TryGetValue('?', out glyph)) return glyph;
-        
+
         return default;
     }
 

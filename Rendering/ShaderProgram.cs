@@ -15,6 +15,11 @@ public sealed class ShaderProgram : IDisposable
 
     public uint Handle { get; }
 
+    public void Dispose()
+    {
+        _gl.DeleteProgram(Handle);
+    }
+
     public void Use()
     {
         _gl.UseProgram(Handle);
@@ -23,44 +28,27 @@ public sealed class ShaderProgram : IDisposable
     public unsafe void SetMatrix4(string uniformName, Matrix4x4 value)
     {
         var location = _gl.GetUniformLocation(Handle, uniformName);
-        if (location < 0)
-        {
-            return;
-        }
+        if (location < 0) return;
 
         _gl.UniformMatrix4(location, 1, true, &value.M11);
     }
 
-    public unsafe void SetVector3(string uniformName, Vector3 value)
+    public void SetVector3(string uniformName, Vector3 value)
     {
         var location = _gl.GetUniformLocation(Handle, uniformName);
-        if (location >= 0)
-        {
-            _gl.Uniform3(location, value.X, value.Y, value.Z);
-        }
+        if (location >= 0) _gl.Uniform3(location, value.X, value.Y, value.Z);
     }
 
-    public unsafe void SetVector4(string uniformName, Vector4 value)
+    public void SetVector4(string uniformName, Vector4 value)
     {
         var location = _gl.GetUniformLocation(Handle, uniformName);
-        if (location >= 0)
-        {
-            _gl.Uniform4(location, value.X, value.Y, value.Z, value.W);
-        }
+        if (location >= 0) _gl.Uniform4(location, value.X, value.Y, value.Z, value.W);
     }
 
     public void SetInt(string uniformName, int value)
     {
         var location = _gl.GetUniformLocation(Handle, uniformName);
-        if (location >= 0)
-        {
-            _gl.Uniform1(location, value);
-        }
-    }
-
-    public void Dispose()
-    {
-        _gl.DeleteProgram(Handle);
+        if (location >= 0) _gl.Uniform1(location, value);
     }
 
     private uint CreateProgram(string vertexSource, string fragmentSource)
