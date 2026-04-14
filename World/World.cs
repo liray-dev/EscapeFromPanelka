@@ -1,26 +1,37 @@
 using System.Numerics;
 using EFP.App;
 using EFP.Entities;
+using EFP.WorldGen;
 
 namespace EFP.World;
 
-public sealed class World(GameplayConfig config)
+public sealed class World
 {
-    public PlayerCube Player { get; } = new(config.PlayerMoveSpeed);
-
-    public Transform FloorTransform { get; } = new()
+    public World(GameplayConfig config, ProceduralSector sector)
     {
-        Position = Vector3.Zero,
-        Scale = new Vector3(config.FloorSize, 1f, config.FloorSize)
-    };
+        Sector = sector;
+        Player = new PlayerCube(config.PlayerMoveSpeed, sector.PlayerSpawn);
 
-    public IReadOnlyList<Transform> DebugBlocks { get; } =
-    [
-        new() { Position = new Vector3(4f, 1f, -2f), Scale = new Vector3(2f, 2f, 2f) },
-        new() { Position = new Vector3(-5f, 1.5f, 3f), Scale = new Vector3(2f, 3f, 1.5f) },
-        new() { Position = new Vector3(0f, 1f, 6f), Scale = new Vector3(6f, 2f, 0.75f) },
-        new() { Position = new Vector3(-7f, 2f, -6f), Scale = new Vector3(1.5f, 4f, 1.5f) }
-    ];
+        var halfExtents = Vector3.Max(Vector3.Abs(sector.BoundsMin), Vector3.Abs(sector.BoundsMax));
+        var foundationSize = MathF.Max(halfExtents.X, halfExtents.Z) * 2f + 6f;
+        Foundation = new WorldRenderable(
+            WorldPrimitiveType.Cube,
+            new Transform
+            {
+                Position = new Vector3(0f, -0.08f, 0f),
+                Scale = new Vector3(foundationSize, 0.16f, foundationSize)
+            },
+            new Vector4(0.11f, 0.12f, 0.13f, 1f));
+    }
+
+    public ProceduralSector Sector { get; }
+    public PlayerCube Player { get; }
+    public WorldRenderable Foundation { get; }
+    public IReadOnlyList<WorldRenderable> StaticGeometry => Sector.StaticGeometry;
+    public IReadOnlyList<PropInstance> Props => Sector.Props;
+    public int Seed => Sector.Seed;
+    public int ModuleCount => Sector.Modules.Count;
+    public int PropCount => Sector.Props.Count;
 
     public void Tick(float deltaTime, Vector2 movementInput)
     {
