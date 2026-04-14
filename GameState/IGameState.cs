@@ -8,7 +8,7 @@ public interface IGameState : IDisposable
     void HandleInput();
     void Update(double deltaTime);
     void FixedUpdate(double fixedDeltaTime);
-    void Render(double alpha);
+    void Render(float alpha);
     void RenderUi();
     void Resize(int width, int height);
 }

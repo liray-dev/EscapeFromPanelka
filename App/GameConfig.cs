@@ -13,12 +13,12 @@ public sealed class WindowConfig
     public string Title { get; set; } = "Escape From Panelka";
     public int Width { get; set; } = 1280;
     public int Height { get; set; } = 720;
-    public bool VSync { get; set; } = false;
+    public bool VSync { get; set; }
 }
 
 public sealed class GraphicsConfig
 {
-    // TODO
+    public float[] ClearColor { get; set; } = [0.05f, 0.06f, 0.08f, 1.0f];
 }
 
 public sealed class GameplayConfig
@@ -31,7 +31,9 @@ public sealed class GameplayConfig
 
 public sealed class CameraConfig
 {
-    public float Height { get; set; } = 14.0f;
-    public float Distance { get; set; } = 12.0f;
-    public float FovDegrees { get; set; } = 55.0f;
+    public float Height { get; set; } = 13.5f;
+    public float Distance { get; set; } = 10.0f;
+    public float YawDegrees { get; set; } = -38.0f;
+    public float PitchDegrees { get; set; } = 58.0f;
+    public float FovDegrees { get; set; } = 48.0f;
 }

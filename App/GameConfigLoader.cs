@@ -16,10 +16,7 @@ public static class GameConfigLoader
     public static GameConfig LoadOrCreate(string path)
     {
         var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrWhiteSpace(directory))
-        {
-            Directory.CreateDirectory(directory);
-        }
+        if (!string.IsNullOrWhiteSpace(directory)) Directory.CreateDirectory(directory);
 
         if (!File.Exists(path))
         {

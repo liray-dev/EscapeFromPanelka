@@ -1,6 +1,7 @@
 using EFP.App;
 using EFP.Input;
 using EFP.Rendering;
+using EFP.Resources;
 using EFP.Utilities;
 using Silk.NET.Windowing;
 
@@ -10,9 +11,11 @@ public interface IGameStateContext
 {
     GameConfig Config { get; }
     InputService Input { get; }
-    SceneRenderer SceneRenderer { get; }
-    FrameStats FrameStats { get; }
     IWindow Window { get; }
+    SceneRenderer SceneRenderer { get; }
+    UiRenderer UiRenderer { get; }
+    GameResources Resources { get; }
+    FrameStats FrameStats { get; }
     void RequestStateChange(AppStateId nextState);
     void RequestExit();
 }

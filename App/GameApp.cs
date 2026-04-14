@@ -3,11 +3,11 @@ using EFP.GameState;
 using EFP.Input;
 using EFP.Platform;
 using EFP.Rendering;
+using EFP.Resources;
 using EFP.Utilities;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.OpenGL;
-using Silk.NET.OpenGL.Extensions.ImGui;
 using Silk.NET.Windowing;
 
 namespace EFP.App;
@@ -16,18 +16,17 @@ public sealed class GameApp : IGameStateContext, IDisposable
 {
     private readonly GameHostWindow _hostWindow;
     private readonly StateMachine _stateMachine = new();
-    private readonly FrameStats _frameStats = new();
+    private bool _disposed;
 
     private GL? _gl;
-    private IInputContext? _inputContext;
     private InputService? _input;
-    private SceneRenderer? _sceneRenderer;
-    private ImGuiController? _imguiController;
-    private AppStateId? _pendingStateChange;
-    private bool _pendingExit;
     private bool _isLoaded;
-    private bool _disposed;
+    private bool _pendingExit;
+    private AppStateId? _pendingStateChange;
+    private GameResources? _resources;
+    private SceneRenderer? _sceneRenderer;
     private double _tickAccumulator;
+    private UiRenderer? _uiRenderer;
 
     public GameApp(GameConfig config)
     {
@@ -40,21 +39,38 @@ public sealed class GameApp : IGameStateContext, IDisposable
         window.FramebufferResize += OnFramebufferResize;
     }
 
-    public GameConfig Config { get; }
+    private double FixedDeltaTime => 1.0 / Math.Max(1, Config.Gameplay.FixedTickRate);
 
+    public void Dispose()
+    {
+        if (_disposed) return;
+
+        _disposed = true;
+
+        _stateMachine.Dispose();
+        _uiRenderer?.Dispose();
+        _sceneRenderer?.Dispose();
+        _resources?.Dispose();
+        _input?.Dispose();
+        _gl?.Dispose();
+        _hostWindow.Dispose();
+    }
+
+    public GameConfig Config { get; }
     public InputService Input => _input ?? throw new InvalidOperationException("Input service is not initialized.");
 
     public SceneRenderer SceneRenderer =>
         _sceneRenderer ?? throw new InvalidOperationException("Scene renderer is not initialized.");
 
-    public FrameStats FrameStats => _frameStats;
+    public UiRenderer UiRenderer =>
+        _uiRenderer ?? throw new InvalidOperationException("UI renderer is not initialized.");
+
+    public GameResources Resources =>
+        _resources ?? throw new InvalidOperationException("Resources are not initialized.");
+
+    public FrameStats FrameStats { get; } = new();
 
     public IWindow Window => _hostWindow.Window;
-
-    public void Run()
-    {
-        _hostWindow.Run();
-    }
 
     public void RequestStateChange(AppStateId nextState)
     {
@@ -66,21 +82,9 @@ public sealed class GameApp : IGameStateContext, IDisposable
         _pendingExit = true;
     }
 
-    public void Dispose()
+    public void Run()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
-        _disposed = true;
-
-        _stateMachine.Dispose();
-        _imguiController?.Dispose();
-        _sceneRenderer?.Dispose();
-        _inputContext?.Dispose();
-        _gl?.Dispose();
-        _hostWindow.Dispose();
+        _hostWindow.Run();
     }
 
     private void OnLoad()
@@ -89,11 +93,16 @@ public sealed class GameApp : IGameStateContext, IDisposable
         window.Center();
 
         _gl = window.CreateOpenGL();
-        _inputContext = window.CreateInput();
-        _input = new InputService(_inputContext);
-        _sceneRenderer = new SceneRenderer(_gl);
+        _input = new InputService(window.CreateInput());
+
+        _resources = new GameResources(Path.Combine(AppContext.BaseDirectory, "assets"));
+        _resources.Initialize(_gl);
+
+        _sceneRenderer = new SceneRenderer(_gl, _resources);
         _sceneRenderer.Load();
-        _imguiController = new ImGuiController(_gl, window, _inputContext);
+
+        _uiRenderer = new UiRenderer(_gl, _resources);
+        _uiRenderer.Load();
 
         OnFramebufferResize(window.Size);
         _stateMachine.ChangeState(CreateState(AppStateId.MainMenu));
@@ -102,13 +111,10 @@ public sealed class GameApp : IGameStateContext, IDisposable
 
     private void OnRender(double deltaTime)
     {
-        if (!_isLoaded || _input is null || _sceneRenderer is null || _imguiController is null)
-        {
-            return;
-        }
+        if (!_isLoaded || _gl is null || _input is null || _sceneRenderer is null || _uiRenderer is null) return;
 
         _input.BeginFrame();
-        _frameStats.Update(deltaTime);
+        FrameStats.Update(deltaTime);
 
         _stateMachine.HandleInput();
         _stateMachine.Update(deltaTime);
@@ -120,11 +126,13 @@ public sealed class GameApp : IGameStateContext, IDisposable
             _tickAccumulator -= FixedDeltaTime;
         }
 
-        _imguiController.Update((float)Math.Max(deltaTime, 1.0 / 1000.0));
-        _sceneRenderer.BeginFrame(new Vector4(0.06f, 0.07f, 0.09f, 1.0f));
-        _stateMachine.Render(_tickAccumulator / FixedDeltaTime);
+        var clear = Config.Graphics.ClearColor;
+        _sceneRenderer.BeginFrame(new Vector4(clear[0], clear[1], clear[2], clear[3]));
+        _stateMachine.Render((float)(_tickAccumulator / FixedDeltaTime));
+
+        _uiRenderer.BeginFrame(Window.Size.X, Window.Size.Y);
         _stateMachine.RenderUi();
-        _imguiController.Render();
+        _uiRenderer.EndFrame();
 
         _input.EndFrame();
         ApplyPendingActions();
@@ -161,6 +169,4 @@ public sealed class GameApp : IGameStateContext, IDisposable
             _ => throw new ArgumentOutOfRangeException(nameof(stateId), stateId, null)
         };
     }
-
-    private double FixedDeltaTime => 1.0 / Math.Max(1, Config.Gameplay.FixedTickRate);
 }

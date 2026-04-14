@@ -1,5 +1,6 @@
 using System.Numerics;
 using EFP.App;
+using EFP.Utilities;
 
 namespace EFP.Scene;
 
@@ -16,6 +17,7 @@ public sealed class TopDownCamera
 
     private Vector3 Position { get; set; }
     private Vector3 Target { get; set; }
+
     public Matrix4x4 View { get; private set; }
     public Matrix4x4 Projection { get; private set; }
 
@@ -33,17 +35,19 @@ public sealed class TopDownCamera
 
     private void RebuildMatrices()
     {
-        Position = Target + new Vector3(0f, _config.Height, _config.Distance);
+        var yaw = MathHelperEx.DegreesToRadians(_config.YawDegrees);
+        var pitch = MathHelperEx.DegreesToRadians(_config.PitchDegrees);
+
+        var flatForward = new Vector3(MathF.Sin(yaw), 0f, MathF.Cos(yaw));
+        var horizontalDistance = _config.Distance * MathF.Cos(pitch);
+        var verticalDistance = _config.Height + _config.Distance * MathF.Sin(pitch);
+
+        Position = Target - flatForward * horizontalDistance + Vector3.UnitY * verticalDistance;
         View = Matrix4x4.CreateLookAt(Position, Target, Vector3.UnitY);
         Projection = Matrix4x4.CreatePerspectiveFieldOfView(
-            DegreesToRadians(_config.FovDegrees),
+            MathHelperEx.DegreesToRadians(_config.FovDegrees),
             _aspectRatio,
             0.1f,
             200f);
-    }
-
-    private static float DegreesToRadians(float degrees)
-    {
-        return degrees * MathF.PI / 180f;
     }
 }

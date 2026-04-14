@@ -15,6 +15,11 @@ public sealed class ShaderProgram : IDisposable
 
     private uint Handle { get; }
 
+    public void Dispose()
+    {
+        _gl.DeleteProgram(Handle);
+    }
+
     public void Use()
     {
         _gl.UseProgram(Handle);
@@ -23,19 +28,15 @@ public sealed class ShaderProgram : IDisposable
     public unsafe void SetMatrix4(string uniformName, Matrix4x4 value)
     {
         var location = _gl.GetUniformLocation(Handle, uniformName);
-        if (location < 0)
-        {
-            return;
-        }
+        if (location < 0) return;
 
-        var transposed = Matrix4x4.Transpose(value);
-
-        _gl.UniformMatrix4(location, 1, false, &transposed.M11);
+        _gl.UniformMatrix4(location, 1, false, &value.M11);
     }
 
-    public void Dispose()
+    public void SetInt(string uniformName, int value)
     {
-        _gl.DeleteProgram(Handle);
+        var location = _gl.GetUniformLocation(Handle, uniformName);
+        if (location >= 0) _gl.Uniform1(location, value);
     }
 
     private uint CreateProgram(string vertexSource, string fragmentSource)

@@ -9,12 +9,9 @@ public sealed class FrameStats
 
     public void Update(double deltaTime)
     {
-        if (deltaTime <= 0)
-        {
-            return;
-        }
+        if (deltaTime <= 0.0) return;
 
-        _smoothedDeltaTime = (_smoothedDeltaTime * 0.9) + (deltaTime * 0.1);
+        _smoothedDeltaTime = _smoothedDeltaTime * 0.9 + deltaTime * 0.1;
         FrameTimeMs = _smoothedDeltaTime * 1000.0;
         FramesPerSecond = 1.0 / _smoothedDeltaTime;
     }

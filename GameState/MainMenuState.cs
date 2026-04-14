@@ -1,20 +1,24 @@
 using EFP.App;
-using EFP.UI;
+using EFP.UI.Screens;
 
 namespace EFP.GameState;
 
 public sealed class MainMenuState(IGameStateContext context) : IGameState
 {
-    private readonly MainMenuView _mainMenuView = new();
+    private readonly MainMenuScreen _screen = new(context,
+        () => context.RequestStateChange(AppStateId.Gameplay),
+        context.RequestExit);
 
     public string Name => "MainMenuState";
 
     public void Enter()
     {
+        _screen.OnOpen();
     }
 
     public void Exit()
     {
+        _screen.OnClose();
     }
 
     public void HandleInput()
@@ -23,21 +27,21 @@ public sealed class MainMenuState(IGameStateContext context) : IGameState
 
     public void Update(double deltaTime)
     {
+        _screen.Update(deltaTime);
     }
 
     public void FixedUpdate(double fixedDeltaTime)
     {
+        _screen.FixedUpdate(fixedDeltaTime);
     }
 
-    public void Render(double alpha)
+    public void Render(float alpha)
     {
     }
 
     public void RenderUi()
     {
-        MainMenuView.Draw(
-            () => context.RequestStateChange(AppStateId.Gameplay),
-            context.RequestExit);
+        _screen.Draw();
     }
 
     public void Resize(int width, int height)

@@ -2,7 +2,7 @@ using System.Numerics;
 using EFP.App;
 using EFP.Input;
 using EFP.Scene;
-using EFP.UI;
+using EFP.UI.Screens;
 using Silk.NET.Input;
 
 namespace EFP.GameState;
@@ -10,11 +10,11 @@ namespace EFP.GameState;
 public sealed class GameplayState(IGameStateContext context) : IGameState
 {
     private readonly GameplayConfig _gameplayConfig = context.Config.Gameplay;
-    private readonly HudRenderer _hudRenderer = new();
-
-    private World.World _world = null!;
-    private TopDownCamera _camera = null!;
+    private readonly HudScreen _hudScreen = new(context);
+    private TopDownCamera? _camera;
     private Vector2 _movementInput;
+
+    private World.World? _world;
 
     public string Name => "GameplayState";
 
@@ -36,6 +36,8 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
 
     public void Update(double deltaTime)
     {
+        if (_world is null || _camera is null) return;
+
         var input = context.Input;
 
         if (input.IsKeyPressed(Key.Escape))
@@ -47,32 +49,33 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
         _movementInput = ReadMovementInput(input);
 
         if (input.IsMouseDown(MouseButton.Right))
-        {
             _world.Player.RotateYaw(input.MouseDelta.X * _gameplayConfig.PlayerRotationSensitivity);
-        }
 
         _camera.Follow(_world.Player.Transform.Position);
     }
 
     public void FixedUpdate(double fixedDeltaTime)
     {
-        _world.Tick((float)fixedDeltaTime, _movementInput);
-        _camera.Follow(_world.Player.Transform.Position);
+        _world?.Tick((float)fixedDeltaTime, _movementInput);
     }
 
-    public void Render(double alpha)
+    public void Render(float alpha)
     {
+        if (_world is null || _camera is null) return;
+
         context.SceneRenderer.RenderWorld(_world, _camera);
     }
 
     public void RenderUi()
     {
-        HudRenderer.Draw(Name, _world.Player, context.FrameStats);
+        if (_world is null) return;
+
+        _hudScreen.Draw(Name, _world.Player, context.FrameStats);
     }
 
     public void Resize(int width, int height)
     {
-        _camera.Resize(width, height);
+        _camera?.Resize(width, height);
     }
 
     public void Dispose()
@@ -81,35 +84,13 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
 
     private static Vector2 ReadMovementInput(InputService input)
     {
-        var horizontal = 0f;
-        var vertical = 0f;
+        var movement = Vector2.Zero;
 
-        if (input.IsKeyDown(Key.A))
-        {
-            horizontal -= 1f;
-        }
+        if (input.IsKeyDown(Key.W)) movement.Y -= 1f;
+        if (input.IsKeyDown(Key.S)) movement.Y += 1f;
+        if (input.IsKeyDown(Key.A)) movement.X -= 1f;
+        if (input.IsKeyDown(Key.D)) movement.X += 1f;
 
-        if (input.IsKeyDown(Key.D))
-        {
-            horizontal += 1f;
-        }
-
-        if (input.IsKeyDown(Key.W))
-        {
-            vertical -= 1f;
-        }
-
-        if (input.IsKeyDown(Key.S))
-        {
-            vertical += 1f;
-        }
-
-        var vector = new Vector2(horizontal, vertical);
-        if (vector.LengthSquared() > 1f)
-        {
-            vector = Vector2.Normalize(vector);
-        }
-
-        return vector;
+        return movement;
     }
 }
