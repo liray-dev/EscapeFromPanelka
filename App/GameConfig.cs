@@ -1,0 +1,37 @@
+namespace EFP.App;
+
+public sealed class GameConfig
+{
+    public WindowConfig Window { get; set; } = new();
+    public GraphicsConfig Graphics { get; set; } = new();
+    public GameplayConfig Gameplay { get; set; } = new();
+    public CameraConfig Camera { get; set; } = new();
+}
+
+public sealed class WindowConfig
+{
+    public string Title { get; set; } = "Escape From Panelka";
+    public int Width { get; set; } = 1280;
+    public int Height { get; set; } = 720;
+    public bool VSync { get; set; } = false;
+}
+
+public sealed class GraphicsConfig
+{
+    // TODO
+}
+
+public sealed class GameplayConfig
+{
+    public int FixedTickRate { get; set; } = 60;
+    public float PlayerMoveSpeed { get; set; } = 5.0f;
+    public float PlayerRotationSensitivity { get; set; } = 0.01f;
+    public float FloorSize { get; set; } = 24.0f;
+}
+
+public sealed class CameraConfig
+{
+    public float Height { get; set; } = 14.0f;
+    public float Distance { get; set; } = 12.0f;
+    public float FovDegrees { get; set; } = 55.0f;
+}
