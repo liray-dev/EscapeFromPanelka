@@ -4,15 +4,17 @@ namespace EFP.Rendering;
 
 public sealed class Mesh : IDisposable
 {
-    private readonly uint _ebo;
     private readonly GL _gl;
-    private readonly uint _indexCount;
     private readonly uint _vao;
     private readonly uint _vbo;
+    private readonly uint _ebo;
+    private readonly uint _indexCount;
+    private readonly PrimitiveType _primitiveType;
 
-    public unsafe Mesh(GL gl, float[] vertices, uint[] indices)
+    public unsafe Mesh(GL gl, float[] vertices, uint[] indices, PrimitiveType primitiveType = PrimitiveType.Triangles)
     {
         _gl = gl;
+        _primitiveType = primitiveType;
         _indexCount = (uint)indices.Length;
 
         _vao = _gl.GenVertexArray();
@@ -24,15 +26,13 @@ public sealed class Mesh : IDisposable
         _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
         fixed (float* verticesPtr = vertices)
         {
-            _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(vertices.Length * sizeof(float)), verticesPtr,
-                BufferUsageARB.StaticDraw);
+            _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(vertices.Length * sizeof(float)), verticesPtr, BufferUsageARB.StaticDraw);
         }
 
         _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _ebo);
         fixed (uint* indicesPtr = indices)
         {
-            _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(indices.Length * sizeof(uint)), indicesPtr,
-                BufferUsageARB.StaticDraw);
+            _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(indices.Length * sizeof(uint)), indicesPtr, BufferUsageARB.StaticDraw);
         }
 
         const uint stride = 9 * sizeof(float);
@@ -49,20 +49,20 @@ public sealed class Mesh : IDisposable
         _gl.BindVertexArray(0);
     }
 
-    public void Dispose()
-    {
-        _gl.DeleteBuffer(_ebo);
-        _gl.DeleteBuffer(_vbo);
-        _gl.DeleteVertexArray(_vao);
-    }
-
     public void Draw()
     {
         unsafe
         {
             _gl.BindVertexArray(_vao);
-            _gl.DrawElements(PrimitiveType.Triangles, _indexCount, DrawElementsType.UnsignedInt, null);
+            _gl.DrawElements(_primitiveType, _indexCount, DrawElementsType.UnsignedInt, null);
             _gl.BindVertexArray(0);
         }
+    }
+
+    public void Dispose()
+    {
+        _gl.DeleteBuffer(_ebo);
+        _gl.DeleteBuffer(_vbo);
+        _gl.DeleteVertexArray(_vao);
     }
 }

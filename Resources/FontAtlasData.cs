@@ -8,7 +8,7 @@ public sealed class FontAtlasData
     public List<FontGlyphData> Glyphs { get; set; } = [];
 }
 
-public abstract class FontGlyphData
+public sealed class FontGlyphData
 {
     public int Codepoint { get; set; }
     public int X { get; set; }

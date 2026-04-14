@@ -29,25 +29,29 @@ public sealed class TopDownCamera
 
     public void Follow(Vector3 target)
     {
-        Target = target;
+        Target = target + new Vector3(0f, 0.8f, 0f);
         RebuildMatrices();
     }
 
     private void RebuildMatrices()
     {
         var yaw = MathHelperEx.DegreesToRadians(_config.YawDegrees);
-        var pitch = MathHelperEx.DegreesToRadians(_config.PitchDegrees);
+        var pitch = MathHelperEx.DegreesToRadians(Math.Clamp(_config.PitchDegrees, 15f, 80f));
 
-        var flatForward = new Vector3(MathF.Sin(yaw), 0f, MathF.Cos(yaw));
-        var horizontalDistance = _config.Distance * MathF.Cos(pitch);
-        var verticalDistance = _config.Height + _config.Distance * MathF.Sin(pitch);
+        var horizontalRadius = _config.Distance * MathF.Cos(pitch);
+        var verticalOffset = _config.Height + (_config.Distance * MathF.Sin(pitch));
 
-        Position = Target - flatForward * horizontalDistance + Vector3.UnitY * verticalDistance;
+        var offset = new Vector3(
+            MathF.Cos(yaw) * horizontalRadius,
+            verticalOffset,
+            MathF.Sin(yaw) * horizontalRadius);
+
+        Position = Target + offset;
         View = Matrix4x4.CreateLookAt(Position, Target, Vector3.UnitY);
         Projection = Matrix4x4.CreatePerspectiveFieldOfView(
             MathHelperEx.DegreesToRadians(_config.FovDegrees),
             _aspectRatio,
-            0.1f,
-            200f);
+            0.05f,
+            250f);
     }
 }
