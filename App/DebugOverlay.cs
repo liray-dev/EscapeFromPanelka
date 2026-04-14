@@ -1,0 +1,127 @@
+using System.Numerics;
+using EFP.Utilities;
+using ImGuiNET;
+using Silk.NET.Input;
+using Silk.NET.OpenGL;
+using Silk.NET.OpenGL.Extensions.ImGui;
+using Silk.NET.Windowing;
+
+namespace EFP.App;
+
+public sealed class DebugOverlay(GL gl, IWindow window, IInputContext inputContext, DebugSettings settings)
+    : IDisposable
+{
+    private readonly ImGuiController _controller = new(gl, window, inputContext);
+    private FrameStats? _frameStats;
+    private bool _hasFrame;
+    private string _stateName = "None";
+
+    public void Dispose()
+    {
+        _controller.Dispose();
+    }
+
+    public void Update(float deltaTime, string stateName, FrameStats frameStats)
+    {
+        _stateName = stateName;
+        _frameStats = frameStats;
+
+        if (!settings.Enabled)
+        {
+            settings.CaptureKeyboard = false;
+            settings.CaptureMouse = false;
+            _hasFrame = false;
+            return;
+        }
+
+        _controller.Update(deltaTime);
+        DrawWindows();
+
+        var io = ImGui.GetIO();
+        settings.CaptureKeyboard = io.WantCaptureKeyboard;
+        settings.CaptureMouse = io.WantCaptureMouse;
+        _hasFrame = true;
+    }
+
+    public void Render()
+    {
+        if (!_hasFrame || !settings.Enabled) return;
+
+        _controller.Render();
+        _hasFrame = false;
+    }
+
+    private void DrawWindows()
+    {
+        ImGui.SetNextWindowSize(new Vector2(420f, 420f), ImGuiCond.FirstUseEver);
+        var open = settings.Enabled;
+
+        if (ImGui.Begin("Panelka Debug", ref open, ImGuiWindowFlags.NoCollapse))
+        {
+            ImGui.TextUnformatted($"State: {_stateName}");
+
+            if (_frameStats is not null)
+            {
+                ImGui.TextUnformatted($"FPS: {_frameStats.FramesPerSecond:0.0}");
+                ImGui.TextUnformatted($"Frame: {_frameStats.FrameTimeMs:0.00} ms");
+            }
+
+            ImGui.Separator();
+
+            var ignoreCollisions = settings.IgnoreCollisions;
+            if (ImGui.Checkbox("Ignore collisions", ref ignoreCollisions)) settings.IgnoreCollisions = ignoreCollisions;
+
+            var allowCriticalMutation = settings.AllowCriticalMutation;
+            if (ImGui.Checkbox("Allow critical mutation", ref allowCriticalMutation))
+                settings.AllowCriticalMutation = allowCriticalMutation;
+
+            var showDemoWindow = settings.ShowDemoWindow;
+            if (ImGui.Checkbox("Show ImGui demo", ref showDemoWindow)) settings.ShowDemoWindow = showDemoWindow;
+
+            ImGui.Separator();
+            ImGui.TextUnformatted("Lighting");
+
+            var lightColor = settings.LightColor;
+            if (ImGui.ColorEdit3("Light color", ref lightColor))
+                settings.LightColor = Vector3.Clamp(lightColor, Vector3.Zero, Vector3.One);
+
+            var ambient = settings.AmbientStrength;
+            if (ImGui.SliderFloat("Ambient", ref ambient, 0.02f, 1.00f)) settings.AmbientStrength = ambient;
+
+            var diffuse = settings.DiffuseStrength;
+            if (ImGui.SliderFloat("Diffuse", ref diffuse, 0.02f, 1.20f)) settings.DiffuseStrength = diffuse;
+
+            ImGui.Separator();
+            ImGui.TextUnformatted("Fog");
+
+            var fogColor = settings.FogColor;
+            if (ImGui.ColorEdit3("Fog color", ref fogColor))
+                settings.FogColor = Vector3.Clamp(fogColor, Vector3.Zero, Vector3.One);
+
+            var fogNear = settings.FogNear;
+            if (ImGui.SliderFloat("Fog near", ref fogNear, 1.0f, 80.0f))
+            {
+                settings.FogNear = fogNear;
+                if (settings.FogFar < fogNear + 1.0f) settings.FogFar = fogNear + 1.0f;
+            }
+
+            var fogFar = settings.FogFar;
+            if (ImGui.SliderFloat("Fog far", ref fogFar, 2.0f, 140.0f))
+                settings.FogFar = MathF.Max(fogFar, settings.FogNear + 1.0f);
+
+            ImGui.Separator();
+            ImGui.TextWrapped(
+                "F1 toggles this overlay. While the window captures input, gameplay controls are paused.");
+        }
+
+        ImGui.End();
+        settings.Enabled = open;
+
+        if (settings.ShowDemoWindow)
+        {
+            var showDemoWindow = settings.ShowDemoWindow;
+            ImGui.ShowDemoWindow(ref showDemoWindow);
+            settings.ShowDemoWindow = showDemoWindow;
+        }
+    }
+}

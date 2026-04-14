@@ -40,10 +40,7 @@ public static class WorldGenMath
         for (var i = 0; i < 4; i++)
         {
             var rotation = i * 90f;
-            if (RotateDirection(currentDirection, rotation) == desiredDirection)
-            {
-                return rotation;
-            }
+            if (RotateDirection(currentDirection, rotation) == desiredDirection) return rotation;
         }
 
         return 0f;
@@ -52,10 +49,7 @@ public static class WorldGenMath
     private static int NormalizeQuarterTurns(int quarterTurns)
     {
         quarterTurns %= 4;
-        if (quarterTurns < 0)
-        {
-            quarterTurns += 4;
-        }
+        if (quarterTurns < 0) quarterTurns += 4;
 
         return quarterTurns;
     }

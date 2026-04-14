@@ -2,23 +2,15 @@ using System.Numerics;
 
 namespace EFP.Entities;
 
-public sealed class PlayerCube
+public sealed class PlayerCube(float moveSpeed, float collisionRadius, Vector3? spawnPosition = null)
 {
-    private readonly float _moveSpeed;
-
-    public PlayerCube(float moveSpeed, float collisionRadius, Vector3? spawnPosition = null)
+    public Transform Transform { get; } = new()
     {
-        _moveSpeed = moveSpeed;
-        CollisionRadius = collisionRadius;
-        Transform = new Transform
-        {
-            Position = spawnPosition ?? new Vector3(0f, 0.5f, 0f),
-            Scale = Vector3.One
-        };
-    }
+        Position = spawnPosition ?? new Vector3(0f, 0.5f, 0f),
+        Scale = Vector3.One
+    };
 
-    public Transform Transform { get; }
-    public float CollisionRadius { get; }
+    public float CollisionRadius { get; } = collisionRadius;
 
     public float YawRadians => Transform.Rotation.Y;
     public float YawDegrees => Transform.Rotation.Y * 180f / MathF.PI;
@@ -26,12 +18,9 @@ public sealed class PlayerCube
     public Vector3 CreateMoveDelta(Vector2 moveInput, float deltaTime)
     {
         var direction = new Vector3(moveInput.X, 0f, moveInput.Y);
-        if (direction.LengthSquared() > 1f)
-        {
-            direction = Vector3.Normalize(direction);
-        }
+        if (direction.LengthSquared() > 1f) direction = Vector3.Normalize(direction);
 
-        return direction * (_moveSpeed * deltaTime);
+        return direction * (moveSpeed * deltaTime);
     }
 
     public void Move(Vector2 moveInput, float deltaTime)
@@ -41,7 +30,7 @@ public sealed class PlayerCube
 
     public void SetPosition(Vector3 position)
     {
-        Transform.Position = new Vector3(position.X, 0.5f, position.Z);
+        Transform.Position = position with { Y = 0.5f };
     }
 
     public void RotateYaw(float deltaYawRadians)
@@ -51,15 +40,9 @@ public sealed class PlayerCube
 
     private static float NormalizeAngle(float angle)
     {
-        while (angle > MathF.PI)
-        {
-            angle -= MathF.Tau;
-        }
+        while (angle > MathF.PI) angle -= MathF.Tau;
 
-        while (angle < -MathF.PI)
-        {
-            angle += MathF.Tau;
-        }
+        while (angle < -MathF.PI) angle += MathF.Tau;
 
         return angle;
     }

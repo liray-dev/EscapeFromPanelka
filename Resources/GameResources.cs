@@ -1,16 +1,25 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using EFP.Rendering;
+using EFP.Utilities;
 using Silk.NET.OpenGL;
 
 namespace EFP.Resources;
 
 public sealed class GameResources(string rootPath) : IDisposable
 {
-    private readonly Dictionary<string, Texture2D> _textures = [];
     private readonly Dictionary<string, FontAtlas> _fonts = [];
+    private readonly Dictionary<string, Texture2D> _textures = [];
 
     private GL? _gl;
+
+    public void Dispose()
+    {
+        foreach (var texture in _textures.Values) texture.Dispose();
+
+        _textures.Clear();
+        _fonts.Clear();
+    }
 
     public void Initialize(GL gl)
     {
@@ -62,17 +71,6 @@ public sealed class GameResources(string rootPath) : IDisposable
         return File.ReadAllText(Resolve(relativePath));
     }
 
-    public void Dispose()
-    {
-        foreach (var texture in _textures.Values)
-        {
-            texture.Dispose();
-        }
-
-        _textures.Clear();
-        _fonts.Clear();
-    }
-
     private Texture2D LoadTexture(string key, string relativePath)
     {
         EnsureInitialized();
@@ -101,13 +99,13 @@ public sealed class GameResources(string rootPath) : IDisposable
 
         foreach (var glyph in data.Glyphs)
         {
-            var uvRect = new Utilities.RectF(
+            var uvRect = new RectF(
                 glyph.X / (float)texture.Width,
                 glyph.Y / (float)texture.Height,
                 glyph.Width / (float)texture.Width,
                 glyph.Height / (float)texture.Height);
 
-            var pixelRect = new Utilities.RectF(glyph.X, glyph.Y, glyph.Width, glyph.Height);
+            var pixelRect = new RectF(glyph.X, glyph.Y, glyph.Width, glyph.Height);
             glyphs[glyph.Codepoint] = new FontGlyph(pixelRect, uvRect, glyph.OffsetX, glyph.OffsetY, glyph.Advance);
         }
 
@@ -124,9 +122,6 @@ public sealed class GameResources(string rootPath) : IDisposable
 
     private void EnsureInitialized()
     {
-        if (_gl is null)
-        {
-            throw new InvalidOperationException("Resources are not initialized.");
-        }
+        if (_gl is null) throw new InvalidOperationException("Resources are not initialized.");
     }
 }

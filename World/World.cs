@@ -8,12 +8,14 @@ namespace EFP.World;
 public sealed class World
 {
     private readonly GameplayConfig _config;
-    private readonly List<CollisionBox2D> _solidColliders = [];
-    private readonly Dictionary<string, CollisionBox2D> _lockablePassageColliders = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _unlockedPassages = new(StringComparer.OrdinalIgnoreCase);
-    private readonly WorldRenderable _powerSwitchMarker;
-    private readonly WorldRenderable _objectiveMarker;
+    private readonly List<CollisionBox2D> _criticalMutationColliders = [];
     private readonly WorldRenderable _extractionMarker;
+    private readonly WorldRenderable _objectiveMarker;
+    private readonly Dictionary<string, CollisionBox2D> _passageColliders = new(StringComparer.OrdinalIgnoreCase);
+    private readonly WorldRenderable _powerSwitchMarker;
+    private readonly List<CollisionBox2D> _solidColliders = [];
+    private string? _interactionPassageId;
+    private InteractionTarget _interactionTarget;
     private float _timeRemainingSeconds;
 
     public World(GameplayConfig config, ProceduralSector sector)
@@ -73,12 +75,17 @@ public sealed class World
     public WorldRenderable Foundation { get; }
     public IReadOnlyList<WorldRenderable> StaticGeometry => Sector.StaticGeometry;
     public IReadOnlyList<WorldRenderable> FeatureGeometry => Sector.FeatureGeometry;
+
+    public IReadOnlyList<WorldRenderable> ActiveCriticalMutationGeometry =>
+        CriticalMutationActive ? Sector.CriticalMutationGeometry : [];
+
     public IReadOnlyList<PropInstance> Props => Sector.Props;
-    public IEnumerable<LockablePassage> ActiveLockablePassages => Sector.LockablePassages.Where(x => !_unlockedPassages.Contains(x.Id));
+    public IEnumerable<LockablePassage> ActiveLockablePassages => Sector.LockablePassages.Where(x => x.Visible);
     public int Seed => Sector.Seed;
     public int ModuleCount => Sector.Modules.Count;
     public int PropCount => Sector.Props.Count;
-    public int LockedPassageCount => ActiveLockablePassages.Count();
+    public int DoorCount => Sector.LockablePassages.Count;
+    public int LockedPassageCount => Sector.LockablePassages.Count(x => x.BlocksPassage);
     public Vector3 PowerSwitchPoint { get; }
     public Vector3 ObjectivePoint { get; }
     public Vector3 ExtractionPoint { get; }
@@ -86,13 +93,17 @@ public sealed class World
     public bool ObjectiveRecovered => Phase is RaidPhase.ReturnToSafeBlock or RaidPhase.Extracted;
     public bool PowerRestored => Phase is not RaidPhase.RestorePower;
     public bool IsRaidResolved => Phase is RaidPhase.Extracted or RaidPhase.Failed;
+    public bool CriticalMutationActive { get; private set; }
+
     public float TimeRemainingSeconds => MathF.Max(0f, _timeRemainingSeconds);
     public bool CanInteract { get; private set; }
+    public bool IgnoreCollision { get; set; }
     public string InteractionPrompt { get; private set; } = string.Empty;
     public string ContextHint { get; private set; } = string.Empty;
+
     public string ObjectiveLabel => Phase switch
     {
-        RaidPhase.RestorePower => "Найти service nook и поднять рубильник",
+        RaidPhase.RestorePower => "Открыть сервисную дверь и поднять рубильник",
         RaidPhase.ReachObjective => "Пройти к архиву и забрать журналы",
         RaidPhase.ReturnToSafeBlock => "Вернуться к гермоконсоли и закрыть герму",
         RaidPhase.Extracted => "Рейд завершён. Архив вынесен",
@@ -117,15 +128,9 @@ public sealed class World
     {
         get
         {
-            if (_timeRemainingSeconds <= _config.CriticalThresholdSeconds)
-            {
-                return RaidPressureLevel.Critical;
-            }
+            if (_timeRemainingSeconds <= _config.CriticalThresholdSeconds) return RaidPressureLevel.Critical;
 
-            if (_timeRemainingSeconds <= _config.PressureThresholdSeconds)
-            {
-                return RaidPressureLevel.Pressure;
-            }
+            if (_timeRemainingSeconds <= _config.PressureThresholdSeconds) return RaidPressureLevel.Pressure;
 
             return RaidPressureLevel.Stable;
         }
@@ -135,7 +140,7 @@ public sealed class World
     public WorldRenderable? ObjectiveMarker => Phase == RaidPhase.ReachObjective ? _objectiveMarker : null;
     public WorldRenderable? ExtractionMarker => Phase == RaidPhase.ReturnToSafeBlock ? _extractionMarker : null;
 
-    public void Tick(float deltaTime, Vector2 movementInput, bool interactPressed)
+    public void Tick(float deltaTime, Vector2 movementInput, bool interactPressed, bool allowCriticalMutation)
     {
         if (!IsRaidResolved)
         {
@@ -147,87 +152,72 @@ public sealed class World
             }
         }
 
+        if (!CriticalMutationActive && allowCriticalMutation && !IsRaidResolved &&
+            PressureLevel == RaidPressureLevel.Critical) ApplyCriticalMutation();
+
         MovePlayer(movementInput, deltaTime);
         UpdateInteractionState();
 
-        if (interactPressed)
-        {
-            TryInteract();
-        }
+        if (interactPressed) TryInteract();
     }
 
     private void MovePlayer(Vector2 movementInput, float deltaTime)
     {
         var delta = Player.CreateMoveDelta(movementInput, deltaTime);
-        if (delta.LengthSquared() <= float.Epsilon)
-        {
-            return;
-        }
+        if (delta.LengthSquared() <= float.Epsilon) return;
 
         var current = Player.Transform.Position;
         var candidateX = new Vector3(current.X + delta.X, current.Y, current.Z);
-        if (!Collides(candidateX))
-        {
-            current = candidateX;
-        }
+        if (!Collides(candidateX)) current = candidateX;
 
         var candidateZ = new Vector3(current.X, current.Y, current.Z + delta.Z);
-        if (!Collides(candidateZ))
-        {
-            current = candidateZ;
-        }
+        if (!Collides(candidateZ)) current = candidateZ;
 
-        current.X = Math.Clamp(current.X, Sector.BoundsMin.X + Player.CollisionRadius, Sector.BoundsMax.X - Player.CollisionRadius);
-        current.Z = Math.Clamp(current.Z, Sector.BoundsMin.Z + Player.CollisionRadius, Sector.BoundsMax.Z - Player.CollisionRadius);
+        current.X = Math.Clamp(current.X, Sector.BoundsMin.X + Player.CollisionRadius,
+            Sector.BoundsMax.X - Player.CollisionRadius);
+        current.Z = Math.Clamp(current.Z, Sector.BoundsMin.Z + Player.CollisionRadius,
+            Sector.BoundsMax.Z - Player.CollisionRadius);
         Player.SetPosition(current);
     }
 
     private bool Collides(Vector3 worldPosition)
     {
+        if (IgnoreCollision) return false;
+
         var center = new Vector2(worldPosition.X, worldPosition.Z);
         foreach (var collider in _solidColliders)
-        {
             if (collider.IntersectsCircle(center, Player.CollisionRadius))
-            {
                 return true;
-            }
-        }
 
-        foreach (var passage in ActiveLockablePassages)
-        {
-            if (_lockablePassageColliders.TryGetValue(passage.Id, out var collider) && collider.IntersectsCircle(center, Player.CollisionRadius))
-            {
+        foreach (var passage in Sector.LockablePassages.Where(x => x.BlocksPassage))
+            if (_passageColliders.TryGetValue(passage.Id, out var collider) &&
+                collider.IntersectsCircle(center, Player.CollisionRadius))
                 return true;
-            }
-        }
+
+        if (CriticalMutationActive)
+            foreach (var collider in _criticalMutationColliders)
+                if (collider.IntersectsCircle(center, Player.CollisionRadius))
+                    return true;
 
         return false;
     }
 
     private void BuildSolidColliders()
     {
-        foreach (var renderable in Sector.StaticGeometry)
-        {
-            AddCollider(renderable.Transform, _solidColliders);
-        }
+        foreach (var renderable in Sector.StaticGeometry) AddCollider(renderable.Transform, _solidColliders);
 
-        foreach (var prop in Sector.Props)
-        {
-            AddCollider(prop.Renderable.Transform, _solidColliders);
-        }
+        foreach (var prop in Sector.Props) AddCollider(prop.Renderable.Transform, _solidColliders);
 
         foreach (var passage in Sector.LockablePassages)
-        {
-            AddCollider(passage.Renderable.Transform, _lockablePassageColliders, passage.Id);
-        }
+            AddCollider(passage.Renderable.Transform, _passageColliders, passage.Id);
+
+        foreach (var renderable in Sector.CriticalMutationGeometry)
+            AddCollider(renderable.Transform, _criticalMutationColliders);
     }
 
     private static void AddCollider(Transform transform, ICollection<CollisionBox2D> target)
     {
-        if (transform.Scale.Y < 0.3f)
-        {
-            return;
-        }
+        if (transform.Scale.Y < 0.3f) return;
 
         var halfExtents = GetPlanarHalfExtents(transform);
         var min = new Vector2(transform.Position.X - halfExtents.X, transform.Position.Z - halfExtents.Y);
@@ -237,10 +227,7 @@ public sealed class World
 
     private static void AddCollider(Transform transform, IDictionary<string, CollisionBox2D> target, string id)
     {
-        if (transform.Scale.Y < 0.3f)
-        {
-            return;
-        }
+        if (transform.Scale.Y < 0.3f) return;
 
         var halfExtents = GetPlanarHalfExtents(transform);
         var min = new Vector2(transform.Position.X - halfExtents.X, transform.Position.Z - halfExtents.Y);
@@ -253,7 +240,7 @@ public sealed class World
         var halfX = transform.Scale.X * 0.5f;
         var halfZ = transform.Scale.Z * 0.5f;
         var quarterTurns = (int)MathF.Round(transform.Rotation.Y / (MathF.PI * 0.5f));
-        var normalizedQuarterTurns = ((quarterTurns % 4) + 4) % 4;
+        var normalizedQuarterTurns = (quarterTurns % 4 + 4) % 4;
         return normalizedQuarterTurns % 2 == 0
             ? new Vector2(halfX, halfZ)
             : new Vector2(halfZ, halfX);
@@ -264,11 +251,16 @@ public sealed class World
         CanInteract = false;
         InteractionPrompt = string.Empty;
         ContextHint = string.Empty;
+        _interactionTarget = InteractionTarget.None;
+        _interactionPassageId = null;
+
+        if (IsRaidResolved) return;
 
         if (Phase == RaidPhase.RestorePower && IsWithinInteractRange(PowerSwitchPoint))
         {
             CanInteract = true;
-            InteractionPrompt = "E — поднять рубильник и открыть аварийную переборку";
+            InteractionPrompt = "E — поднять рубильник и снять блокировку с аварийной переборки";
+            _interactionTarget = InteractionTarget.PowerSwitch;
             return;
         }
 
@@ -276,6 +268,7 @@ public sealed class World
         {
             CanInteract = true;
             InteractionPrompt = "E — забрать архивные журналы";
+            _interactionTarget = InteractionTarget.Objective;
             return;
         }
 
@@ -283,41 +276,68 @@ public sealed class World
         {
             CanInteract = true;
             InteractionPrompt = "E — закрыть герму и завершить рейд";
+            _interactionTarget = InteractionTarget.Extraction;
             return;
         }
 
-        foreach (var passage in ActiveLockablePassages)
+        foreach (var passage in Sector.LockablePassages)
         {
-            if (IsWithinInteractRange(passage.Renderable.Transform.Position))
+            if (!passage.Visible || !IsWithinInteractRange(passage.Renderable.Transform.Position)) continue;
+
+            switch (passage.State)
             {
-                ContextHint = $"{passage.Label} закрыта. Питание снимается в service nook";
-                return;
+                case DoorState.Closed:
+                    CanInteract = true;
+                    InteractionPrompt = "E — открыть дверь";
+                    _interactionTarget = InteractionTarget.Passage;
+                    _interactionPassageId = passage.Id;
+                    return;
+                case DoorState.Locked:
+                    ContextHint = "Проход заперт. Нужно восстановить питание";
+                    return;
+                case DoorState.Jammed:
+                    ContextHint = "Проход заклинило. Его режет самосбор";
+                    return;
             }
         }
     }
 
     private void TryInteract()
     {
-        if (!CanInteract)
-        {
-            return;
-        }
+        if (!CanInteract) return;
 
-        switch (Phase)
+        switch (_interactionTarget)
         {
-            case RaidPhase.RestorePower:
-                _unlockedPassages.UnionWith(Sector.LockablePassages.Where(x => x.UnlockId == "service_power").Select(x => x.Id));
+            case InteractionTarget.PowerSwitch:
+                foreach (var passage in Sector.LockablePassages.Where(x =>
+                             x.UnlockId.Equals("service_power", StringComparison.OrdinalIgnoreCase))) passage.Unlock();
+
                 Phase = RaidPhase.ReachObjective;
                 break;
-            case RaidPhase.ReachObjective:
+            case InteractionTarget.Objective:
                 Phase = RaidPhase.ReturnToSafeBlock;
                 break;
-            case RaidPhase.ReturnToSafeBlock:
+            case InteractionTarget.Extraction:
                 Phase = RaidPhase.Extracted;
+                break;
+            case InteractionTarget.Passage:
+                if (_interactionPassageId is not null)
+                    Sector.LockablePassages
+                        .FirstOrDefault(x => x.Id.Equals(_interactionPassageId, StringComparison.OrdinalIgnoreCase))
+                        ?.Open();
                 break;
         }
 
         UpdateInteractionState();
+    }
+
+    private void ApplyCriticalMutation()
+    {
+        CriticalMutationActive = true;
+
+        foreach (var passage in Sector.LockablePassages.Where(x => x.ActivateOnCriticalPhase)) passage.Jam();
+
+        ContextHint = "Сектор перестраивается. Самосбор режет боковые маршруты";
     }
 
     private bool IsWithinInteractRange(Vector3 worldPoint)
@@ -325,5 +345,14 @@ public sealed class World
         var playerXZ = new Vector2(Player.Transform.Position.X, Player.Transform.Position.Z);
         var pointXZ = new Vector2(worldPoint.X, worldPoint.Z);
         return Vector2.DistanceSquared(playerXZ, pointXZ) <= _config.InteractRadius * _config.InteractRadius;
+    }
+
+    private enum InteractionTarget
+    {
+        None,
+        PowerSwitch,
+        Objective,
+        Extraction,
+        Passage
     }
 }

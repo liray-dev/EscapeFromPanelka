@@ -1,4 +1,3 @@
-using System.Numerics;
 using EFP.GameState;
 using EFP.Input;
 using EFP.Platform;
@@ -16,6 +15,7 @@ public sealed class GameApp : IGameStateContext, IDisposable
 {
     private readonly GameHostWindow _hostWindow;
     private readonly StateMachine _stateMachine = new();
+    private DebugOverlay? _debugOverlay;
     private bool _disposed;
 
     private GL? _gl;
@@ -48,6 +48,7 @@ public sealed class GameApp : IGameStateContext, IDisposable
         _disposed = true;
 
         _stateMachine.Dispose();
+        _debugOverlay?.Dispose();
         _uiRenderer?.Dispose();
         _sceneRenderer?.Dispose();
         _resources?.Dispose();
@@ -57,6 +58,7 @@ public sealed class GameApp : IGameStateContext, IDisposable
     }
 
     public GameConfig Config { get; }
+    public DebugSettings DebugSettings { get; } = new();
     public InputService Input => _input ?? throw new InvalidOperationException("Input service is not initialized.");
 
     public SceneRenderer SceneRenderer =>
@@ -93,7 +95,9 @@ public sealed class GameApp : IGameStateContext, IDisposable
         window.Center();
 
         _gl = window.CreateOpenGL();
-        _input = new InputService(window.CreateInput());
+        var inputContext = window.CreateInput();
+        _input = new InputService(inputContext);
+        _debugOverlay = new DebugOverlay(_gl, window, inputContext, DebugSettings);
 
         _resources = new GameResources(Path.Combine(AppContext.BaseDirectory, "assets"));
         _resources.Initialize(_gl);
@@ -114,7 +118,11 @@ public sealed class GameApp : IGameStateContext, IDisposable
         if (!_isLoaded || _gl is null || _input is null || _sceneRenderer is null || _uiRenderer is null) return;
 
         _input.BeginFrame();
+
+        if (_input.IsKeyPressed(Key.F1)) DebugSettings.Enabled = !DebugSettings.Enabled;
+
         FrameStats.Update(deltaTime);
+        _debugOverlay?.Update((float)deltaTime, _stateMachine.CurrentStateName, FrameStats);
 
         _stateMachine.HandleInput();
         _stateMachine.Update(deltaTime);
@@ -126,13 +134,13 @@ public sealed class GameApp : IGameStateContext, IDisposable
             _tickAccumulator -= FixedDeltaTime;
         }
 
-        var clear = Config.Graphics.ClearColor;
-        _sceneRenderer.BeginFrame(new Vector4(clear[0], clear[1], clear[2], clear[3]));
+        _sceneRenderer.BeginFrame();
         _stateMachine.Render((float)(_tickAccumulator / FixedDeltaTime));
 
         _uiRenderer.BeginFrame(Window.Size.X, Window.Size.Y);
         _stateMachine.RenderUi();
         _uiRenderer.EndFrame();
+        _debugOverlay?.Render();
 
         _input.EndFrame();
         ApplyPendingActions();

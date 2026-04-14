@@ -9,6 +9,8 @@ public sealed class MainMenuScreen(IGameStateContext context, Action onStart, Ac
 {
     public override void Update(double deltaTime)
     {
+        if (Context.DebugSettings.CaptureKeyboard) return;
+
         if (Context.Input.IsKeyPressed(Key.Enter)) onStart();
 
         if (Context.Input.IsKeyPressed(Key.Escape)) onExit();
@@ -36,7 +38,7 @@ public sealed class MainMenuScreen(IGameStateContext context, Action onStart, Ac
 
         if (Button(exitButton, "Выход")) onExit();
 
-        DrawText(new Vector2(card.X + 28f, card.Bottom - 148f), "Enter — запуск   Escape — выход", 0.34f,
+        DrawText(new Vector2(card.X + 28f, card.Bottom - 148f), "Enter — запуск   Escape — выход   F1 — debug", 0.34f,
             ColorRgba.FromBytes(138, 147, 158));
     }
 }

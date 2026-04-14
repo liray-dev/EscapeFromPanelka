@@ -1,4 +1,5 @@
 using System.Numerics;
+using EFP.App;
 using EFP.Resources;
 using EFP.Scene;
 using EFP.World;
@@ -7,98 +8,88 @@ using WorldModel = EFP.World.World;
 
 namespace EFP.Rendering;
 
-public sealed class SceneRenderer : IDisposable
+public sealed class SceneRenderer(GL gl, GameResources resources) : IDisposable
 {
-    private readonly GL _gl;
-    private readonly GameResources _resources;
-
-    private ShaderProgram? _shader;
-    private Mesh? _planeMesh;
     private Mesh? _cubeMesh;
     private Mesh? _gridMesh;
+    private Mesh? _planeMesh;
+    private ShaderProgram? _shader;
 
-    public SceneRenderer(GL gl, GameResources resources)
+    public void Dispose()
     {
-        _gl = gl;
-        _resources = resources;
+        _gridMesh?.Dispose();
+        _cubeMesh?.Dispose();
+        _planeMesh?.Dispose();
+        _shader?.Dispose();
     }
 
     public void Load()
     {
-        _gl.Enable(GLEnum.DepthTest);
-        _gl.Disable(GLEnum.CullFace);
+        gl.Enable(GLEnum.DepthTest);
+        gl.Disable(GLEnum.CullFace);
 
-        _shader = _resources.CreateShaderProgram("shaders/scene/scene.vert", "shaders/scene/scene.frag");
+        _shader = resources.CreateShaderProgram("shaders/scene/scene.vert", "shaders/scene/scene.frag");
 
         var plane = MeshFactory.CreatePlane();
-        _planeMesh = new Mesh(_gl, plane.Vertices, plane.Indices, plane.PrimitiveType);
+        _planeMesh = new Mesh(gl, plane.Vertices, plane.Indices, plane.PrimitiveType);
 
         var cube = MeshFactory.CreateCube();
-        _cubeMesh = new Mesh(_gl, cube.Vertices, cube.Indices, cube.PrimitiveType);
+        _cubeMesh = new Mesh(gl, cube.Vertices, cube.Indices, cube.PrimitiveType);
 
         var grid = MeshFactory.CreateGrid(32, 1f, 0.021f);
-        _gridMesh = new Mesh(_gl, grid.Vertices, grid.Indices, grid.PrimitiveType);
+        _gridMesh = new Mesh(gl, grid.Vertices, grid.Indices, grid.PrimitiveType);
     }
 
     public void Resize(int width, int height)
     {
-        _gl.Viewport(0, 0, (uint)Math.Max(1, width), (uint)Math.Max(1, height));
+        gl.Viewport(0, 0, (uint)Math.Max(1, width), (uint)Math.Max(1, height));
     }
 
-    public void BeginFrame(Vector4 clearColor)
+    public void BeginFrame()
     {
-        _gl.Enable(GLEnum.DepthTest);
-        _gl.Disable(GLEnum.CullFace);
-        _gl.ClearColor(clearColor.X, clearColor.Y, clearColor.Z, clearColor.W);
-        _gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
+        gl.Enable(GLEnum.DepthTest);
+        gl.Disable(GLEnum.CullFace);
+        gl.ClearColor(0.05f, 0.06f, 0.08f, 1.0f);
+        gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
     }
 
-    public void RenderWorld(WorldModel world, TopDownCamera camera)
+    public void RenderWorld(WorldModel world, TopDownCamera camera, DebugSettings debugSettings)
     {
-        if (_shader is null || _planeMesh is null || _cubeMesh is null || _gridMesh is null)
-        {
-            return;
-        }
+        if (_shader is null || _planeMesh is null || _cubeMesh is null || _gridMesh is null) return;
+
+        var environment = BuildEnvironment(world, camera, debugSettings);
+        gl.ClearColor(environment.ClearColor.X, environment.ClearColor.Y, environment.ClearColor.Z,
+            environment.ClearColor.W);
+        gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
 
         _shader.Use();
+        _shader.SetVector3("uLightDirection", environment.LightDirection);
+        _shader.SetVector3("uLightColor", environment.LightColor);
+        _shader.SetFloat("uAmbientStrength", environment.AmbientStrength);
+        _shader.SetFloat("uDiffuseStrength", environment.DiffuseStrength);
+        _shader.SetVector3("uFogColor", environment.FogColor);
+        _shader.SetFloat("uFogNear", environment.FogNear);
+        _shader.SetFloat("uFogFar", environment.FogFar);
+        _shader.SetVector3("uCameraPosition", camera.Position);
 
         RenderRenderable(world.Foundation, camera);
         RenderMesh(_gridMesh, Matrix4x4.Identity, camera, Vector4.One);
 
-        foreach (var renderable in world.StaticGeometry)
-        {
-            RenderRenderable(renderable, camera);
-        }
+        foreach (var renderable in world.StaticGeometry) RenderRenderable(renderable, camera);
 
-        foreach (var renderable in world.FeatureGeometry)
-        {
-            RenderRenderable(renderable, camera);
-        }
+        foreach (var renderable in world.FeatureGeometry) RenderRenderable(renderable, camera);
 
-        foreach (var passage in world.ActiveLockablePassages)
-        {
-            RenderRenderable(passage.Renderable, camera);
-        }
+        foreach (var mutation in world.ActiveCriticalMutationGeometry) RenderRenderable(mutation, camera);
 
-        foreach (var prop in world.Props)
-        {
-            RenderRenderable(prop.Renderable, camera);
-        }
+        foreach (var passage in world.ActiveLockablePassages) RenderRenderable(passage.Renderable, camera);
 
-        if (world.PowerSwitchMarker is { } powerSwitchMarker)
-        {
-            RenderRenderable(powerSwitchMarker, camera);
-        }
+        foreach (var prop in world.Props) RenderRenderable(prop.Renderable, camera);
 
-        if (world.ObjectiveMarker is { } objectiveMarker)
-        {
-            RenderRenderable(objectiveMarker, camera);
-        }
+        if (world.PowerSwitchMarker is { } powerSwitchMarker) RenderRenderable(powerSwitchMarker, camera);
 
-        if (world.ExtractionMarker is { } extractionMarker)
-        {
-            RenderRenderable(extractionMarker, camera);
-        }
+        if (world.ObjectiveMarker is { } objectiveMarker) RenderRenderable(objectiveMarker, camera);
+
+        if (world.ExtractionMarker is { } extractionMarker) RenderRenderable(extractionMarker, camera);
 
         var playerTint = world.Phase switch
         {
@@ -119,10 +110,7 @@ public sealed class SceneRenderer : IDisposable
             _ => _cubeMesh
         };
 
-        if (mesh is null)
-        {
-            return;
-        }
+        if (mesh is null) return;
 
         RenderMesh(mesh, renderable.Transform.CreateModelMatrix(), camera, renderable.Tint);
     }
@@ -136,11 +124,84 @@ public sealed class SceneRenderer : IDisposable
         mesh.Draw();
     }
 
-    public void Dispose()
+    private static SceneEnvironment BuildEnvironment(WorldModel world, TopDownCamera camera,
+        DebugSettings debugSettings)
     {
-        _gridMesh?.Dispose();
-        _cubeMesh?.Dispose();
-        _planeMesh?.Dispose();
-        _shader?.Dispose();
+        var lightFactor = world.PressureLevel switch
+        {
+            RaidPressureLevel.Stable => 1.00f,
+            RaidPressureLevel.Pressure => 0.82f,
+            RaidPressureLevel.Critical => 0.62f,
+            _ => 1.00f
+        };
+
+        var ambientFactor = world.PressureLevel switch
+        {
+            RaidPressureLevel.Stable => 1.00f,
+            RaidPressureLevel.Pressure => 0.94f,
+            RaidPressureLevel.Critical => 0.80f,
+            _ => 1.00f
+        };
+
+        var fogNearFactor = world.PressureLevel switch
+        {
+            RaidPressureLevel.Stable => 1.00f,
+            RaidPressureLevel.Pressure => 0.76f,
+            RaidPressureLevel.Critical => 0.48f,
+            _ => 1.00f
+        };
+
+        var fogFarFactor = world.PressureLevel switch
+        {
+            RaidPressureLevel.Stable => 1.00f,
+            RaidPressureLevel.Pressure => 0.74f,
+            RaidPressureLevel.Critical => 0.46f,
+            _ => 1.00f
+        };
+
+        var lightColor = debugSettings.LightColor * lightFactor;
+        var fogColor = debugSettings.FogColor;
+
+        if (world.PressureLevel == RaidPressureLevel.Pressure)
+        {
+            lightColor = Vector3.Lerp(lightColor, new Vector3(0.85f, 0.76f, 0.70f), 0.18f);
+            fogColor = Vector3.Lerp(fogColor, new Vector3(0.11f, 0.12f, 0.16f), 0.34f);
+        }
+        else if (world.PressureLevel == RaidPressureLevel.Critical)
+        {
+            lightColor = Vector3.Lerp(lightColor, new Vector3(0.92f, 0.34f, 0.42f), 0.38f);
+            fogColor = Vector3.Lerp(fogColor, new Vector3(0.22f, 0.09f, 0.15f), 0.58f);
+        }
+
+        if (world.CriticalMutationActive)
+        {
+            fogColor = Vector3.Lerp(fogColor, new Vector3(0.30f, 0.10f, 0.19f), 0.24f);
+            fogNearFactor *= 0.84f;
+            fogFarFactor *= 0.84f;
+        }
+
+        var fogNear = MathF.Max(1.0f, debugSettings.FogNear * fogNearFactor);
+        var fogFar = MathF.Max(fogNear + 1.0f, debugSettings.FogFar * fogFarFactor);
+        var clearColor = new Vector4(Vector3.Clamp(fogColor * 0.72f, Vector3.Zero, Vector3.One), 1.0f);
+
+        return new SceneEnvironment(
+            clearColor,
+            Vector3.Normalize(new Vector3(-0.45f, 1.00f, -0.30f)),
+            Vector3.Clamp(lightColor, Vector3.Zero, new Vector3(2.0f)),
+            fogColor,
+            debugSettings.AmbientStrength * ambientFactor,
+            debugSettings.DiffuseStrength * lightFactor,
+            fogNear,
+            fogFar);
     }
+
+    private readonly record struct SceneEnvironment(
+        Vector4 ClearColor,
+        Vector3 LightDirection,
+        Vector3 LightColor,
+        Vector3 FogColor,
+        float AmbientStrength,
+        float DiffuseStrength,
+        float FogNear,
+        float FogFar);
 }

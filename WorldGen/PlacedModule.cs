@@ -4,7 +4,8 @@ namespace EFP.WorldGen;
 
 public sealed class PlacedModule
 {
-    public PlacedModule(string nodeId, ModuleDefinition definition, Vector3 position, float rotationDegrees, bool mainRoute)
+    public PlacedModule(string nodeId, ModuleDefinition definition, Vector3 position, float rotationDegrees,
+        bool mainRoute)
     {
         NodeId = nodeId;
         Definition = definition;

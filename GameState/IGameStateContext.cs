@@ -10,6 +10,7 @@ namespace EFP.GameState;
 public interface IGameStateContext
 {
     GameConfig Config { get; }
+    DebugSettings DebugSettings { get; }
     InputService Input { get; }
     IWindow Window { get; }
     SceneRenderer SceneRenderer { get; }

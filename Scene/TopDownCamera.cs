@@ -15,7 +15,7 @@ public sealed class TopDownCamera
         RebuildMatrices();
     }
 
-    private Vector3 Position { get; set; }
+    public Vector3 Position { get; private set; }
     private Vector3 Target { get; set; }
 
     public Matrix4x4 View { get; private set; }

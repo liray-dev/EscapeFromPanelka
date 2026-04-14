@@ -9,6 +9,7 @@ public sealed class ProceduralSector
     public List<PlacedModule> Modules { get; set; } = [];
     public List<WorldRenderable> StaticGeometry { get; set; } = [];
     public List<WorldRenderable> FeatureGeometry { get; set; } = [];
+    public List<WorldRenderable> CriticalMutationGeometry { get; set; } = [];
     public List<PropInstance> Props { get; set; } = [];
     public List<LockablePassage> LockablePassages { get; set; } = [];
     public Vector3 PlayerSpawn { get; set; }

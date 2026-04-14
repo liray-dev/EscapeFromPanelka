@@ -62,7 +62,7 @@ public abstract class Screen(IGameStateContext context)
 
     protected bool Button(RectF rect, string text)
     {
-        var hovered = rect.Contains(Input.MousePosition);
+        var hovered = !Context.DebugSettings.CaptureMouse && rect.Contains(Input.MousePosition);
         var background = hovered
             ? ColorRgba.FromBytes(66, 86, 104, 232)
             : ColorRgba.FromBytes(42, 53, 66, 228);

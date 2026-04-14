@@ -45,6 +45,12 @@ public sealed class ShaderProgram : IDisposable
         if (location >= 0) _gl.Uniform4(location, value.X, value.Y, value.Z, value.W);
     }
 
+    public void SetFloat(string uniformName, float value)
+    {
+        var location = _gl.GetUniformLocation(Handle, uniformName);
+        if (location >= 0) _gl.Uniform1(location, value);
+    }
+
     public void SetInt(string uniformName, int value)
     {
         var location = _gl.GetUniformLocation(Handle, uniformName);
