@@ -12,12 +12,12 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
 {
     private const string ModuleLibraryPath = "config/worldgen/module_library.json";
     private readonly StructureBlueprintGenerator _blueprintGenerator = new();
-
     private readonly GameplayConfig _gameplayConfig = context.Config.Gameplay;
     private readonly HudScreen _hudScreen = new(context);
     private readonly StructureAssembler _structureAssembler = new();
     private TopDownCamera? _camera;
-    private ModuleLibrary? _moduleLibrary;
+    private float _lastRoomSizeMultiplier = 1f;
+    private ModuleLibraryConfig? _moduleConfig;
     private Vector2 _movementInput;
     private int _seed;
 
@@ -27,10 +27,12 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
 
     public void Enter()
     {
-        _moduleLibrary = new ModuleLibrary(context.Resources.LoadConfig<ModuleLibraryConfig>(ModuleLibraryPath));
+        _moduleConfig = context.Resources.LoadConfig<ModuleLibraryConfig>(ModuleLibraryPath);
         _camera = new TopDownCamera(context.Config.Camera);
+        _camera.ApplyDebug(context.DebugSettings);
 
         _seed = Environment.TickCount & int.MaxValue;
+        _lastRoomSizeMultiplier = context.DebugSettings.RoomSizeMultiplier;
         RebuildWorld(_seed);
     }
 
@@ -64,12 +66,24 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
             return;
         }
 
+        if (MathF.Abs(context.DebugSettings.RoomSizeMultiplier - _lastRoomSizeMultiplier) > 0.001f)
+        {
+            _lastRoomSizeMultiplier = context.DebugSettings.RoomSizeMultiplier;
+            RebuildWorld(_seed);
+            return;
+        }
+
         _movementInput = captureKeyboard ? Vector2.Zero : ReadMovementInput(input);
 
         if (!captureMouse && input.IsMouseDown(MouseButton.Right))
-            _world.Player.RotateYaw(input.MouseDelta.X * _gameplayConfig.PlayerRotationSensitivity);
+        {
+            var rotationSpeed = _gameplayConfig.PlayerRotationSensitivity *
+                                context.DebugSettings.RotationSpeedMultiplier;
+            _world.Player.RotateYaw(input.MouseDelta.X * rotationSpeed);
+        }
 
-        _camera.Follow(_world.Player.Transform.Position);
+        _camera.ApplyDebug(context.DebugSettings);
+        _camera.Follow(_world.Player.Transform.Position, context.DebugSettings.CameraFollowSmoothing, (float)deltaTime);
     }
 
     public void FixedUpdate(double fixedDeltaTime)
@@ -106,16 +120,18 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
 
     private void RebuildWorld(int seed)
     {
-        if (_moduleLibrary is null || _camera is null) return;
+        if (_moduleConfig is null || _camera is null) return;
 
         _seed = seed;
+        var roomSizeMultiplier = Math.Clamp(context.DebugSettings.RoomSizeMultiplier, 0.75f, 1.80f);
+        var library = new ModuleLibrary(_moduleConfig, roomSizeMultiplier);
         var blueprint = _blueprintGenerator.Generate(seed);
-        var sector = _structureAssembler.Assemble(blueprint, _moduleLibrary);
+        var sector = _structureAssembler.Assemble(blueprint, library);
         _world = new World.World(_gameplayConfig, sector)
         {
             IgnoreCollision = context.DebugSettings.IgnoreCollisions
         };
-        _camera.Follow(_world.Player.Transform.Position);
+        _camera.SnapTo(_world.Player.Transform.Position);
     }
 
     private static Vector2 ReadMovementInput(InputService input)

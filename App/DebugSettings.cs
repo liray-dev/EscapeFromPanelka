@@ -16,4 +16,11 @@ public sealed class DebugSettings
     public float DiffuseStrength { get; set; } = 0.54f;
     public float FogNear { get; set; } = 16.0f;
     public float FogFar { get; set; } = 52.0f;
+    public float CameraYawDegrees { get; set; } = -38.0f;
+    public float CameraPitchDegrees { get; set; } = 58.0f;
+    public float CameraDistance { get; set; } = 10.0f;
+    public float CameraHeight { get; set; } = 13.5f;
+    public float CameraFollowSmoothing { get; set; } = 1.0f;
+    public float RoomSizeMultiplier { get; set; } = 1.0f;
+    public float RotationSpeedMultiplier { get; set; } = 0.45f;
 }

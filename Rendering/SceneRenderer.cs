@@ -10,6 +10,7 @@ namespace EFP.Rendering;
 
 public sealed class SceneRenderer(GL gl, GameResources resources) : IDisposable
 {
+    private const int MaxPointLights = 16;
     private Mesh? _cubeMesh;
     private Mesh? _gridMesh;
     private Mesh? _planeMesh;
@@ -71,24 +72,23 @@ public sealed class SceneRenderer(GL gl, GameResources resources) : IDisposable
         _shader.SetFloat("uFogNear", environment.FogNear);
         _shader.SetFloat("uFogFar", environment.FogFar);
         _shader.SetVector3("uCameraPosition", camera.Position);
+        ApplyPointLights(world, environment);
 
         RenderRenderable(world.Foundation, camera);
         RenderMesh(_gridMesh, Matrix4x4.Identity, camera, Vector4.One);
 
         foreach (var renderable in world.StaticGeometry) RenderRenderable(renderable, camera);
-
         foreach (var renderable in world.FeatureGeometry) RenderRenderable(renderable, camera);
-
+        foreach (var zone in world.ActiveInfectedZones) RenderRenderable(zone.Renderable, camera);
         foreach (var mutation in world.ActiveCriticalMutationGeometry) RenderRenderable(mutation, camera);
-
         foreach (var passage in world.ActiveLockablePassages) RenderRenderable(passage.Renderable, camera);
-
         foreach (var prop in world.Props) RenderRenderable(prop.Renderable, camera);
 
+        foreach (var hostile in world.Hostiles)
+            RenderMesh(_cubeMesh, hostile.Transform.CreateModelMatrix(), camera, hostile.Tint);
+
         if (world.PowerSwitchMarker is { } powerSwitchMarker) RenderRenderable(powerSwitchMarker, camera);
-
         if (world.ObjectiveMarker is { } objectiveMarker) RenderRenderable(objectiveMarker, camera);
-
         if (world.ExtractionMarker is { } extractionMarker) RenderRenderable(extractionMarker, camera);
 
         var playerTint = world.Phase switch
@@ -124,6 +124,46 @@ public sealed class SceneRenderer(GL gl, GameResources resources) : IDisposable
         mesh.Draw();
     }
 
+    private void ApplyPointLights(WorldModel world, SceneEnvironment environment)
+    {
+        if (_shader is null) return;
+
+        var lightCount = Math.Min(MaxPointLights, world.Lights.Count);
+        _shader.SetInt("uPointLightCount", lightCount);
+
+        for (var index = 0; index < lightCount; index++)
+        {
+            var light = world.Lights[index];
+            var flicker = light.FlickerSpeed <= 0.01f
+                ? 1f
+                : 0.82f + 0.18f *
+                (0.5f + 0.5f * MathF.Sin(world.ElapsedRaidSeconds * light.FlickerSpeed + light.PhaseOffset));
+
+            var pressureFactor = world.PressureLevel switch
+            {
+                RaidPressureLevel.Stable => 1.00f,
+                RaidPressureLevel.Pressure => light.Emergency ? 0.90f : 0.96f,
+                RaidPressureLevel.Critical => light.Emergency ? 0.72f : 0.84f,
+                _ => 1.00f
+            };
+
+            var color = light.Color;
+            if (light.Emergency && world.PressureLevel == RaidPressureLevel.Pressure)
+                color = Vector3.Lerp(color, new Vector3(0.94f, 0.68f, 0.54f), 0.18f);
+            if (light.Emergency && world.PressureLevel == RaidPressureLevel.Critical)
+                color = Vector3.Lerp(color, new Vector3(1.00f, 0.30f, 0.36f), 0.48f);
+
+            color = Vector3.Clamp(color * Vector3.Lerp(Vector3.One, environment.LightColor, 0.20f), Vector3.Zero,
+                new Vector3(2.5f));
+            var intensity = light.Intensity * flicker * pressureFactor;
+
+            _shader.SetVector3($"uPointLightPosition[{index}]", light.Position);
+            _shader.SetVector3($"uPointLightColor[{index}]", color);
+            _shader.SetFloat($"uPointLightRadius[{index}]", light.Radius);
+            _shader.SetFloat($"uPointLightIntensity[{index}]", intensity);
+        }
+    }
+
     private static SceneEnvironment BuildEnvironment(WorldModel world, TopDownCamera camera,
         DebugSettings debugSettings)
     {
@@ -139,28 +179,36 @@ public sealed class SceneRenderer(GL gl, GameResources resources) : IDisposable
         {
             RaidPressureLevel.Stable => 1.00f,
             RaidPressureLevel.Pressure => 0.94f,
-            RaidPressureLevel.Critical => 0.80f,
+            RaidPressureLevel.Critical => 0.78f,
             _ => 1.00f
         };
 
         var fogNearFactor = world.PressureLevel switch
         {
             RaidPressureLevel.Stable => 1.00f,
-            RaidPressureLevel.Pressure => 0.76f,
-            RaidPressureLevel.Critical => 0.48f,
+            RaidPressureLevel.Pressure => 0.72f,
+            RaidPressureLevel.Critical => 0.44f,
             _ => 1.00f
         };
 
         var fogFarFactor = world.PressureLevel switch
         {
             RaidPressureLevel.Stable => 1.00f,
-            RaidPressureLevel.Pressure => 0.74f,
-            RaidPressureLevel.Critical => 0.46f,
+            RaidPressureLevel.Pressure => 0.72f,
+            RaidPressureLevel.Critical => 0.42f,
             _ => 1.00f
         };
 
         var lightColor = debugSettings.LightColor * lightFactor;
         var fogColor = debugSettings.FogColor;
+
+        if (world.ActiveInfectedZoneCount > 0)
+        {
+            fogColor = Vector3.Lerp(fogColor, new Vector3(0.18f, 0.08f, 0.14f),
+                0.20f + world.ActiveInfectedZoneCount * 0.05f);
+            fogNearFactor *= 0.94f;
+            fogFarFactor *= 0.92f;
+        }
 
         if (world.PressureLevel == RaidPressureLevel.Pressure)
         {
@@ -170,14 +218,14 @@ public sealed class SceneRenderer(GL gl, GameResources resources) : IDisposable
         else if (world.PressureLevel == RaidPressureLevel.Critical)
         {
             lightColor = Vector3.Lerp(lightColor, new Vector3(0.92f, 0.34f, 0.42f), 0.38f);
-            fogColor = Vector3.Lerp(fogColor, new Vector3(0.22f, 0.09f, 0.15f), 0.58f);
+            fogColor = Vector3.Lerp(fogColor, new Vector3(0.24f, 0.08f, 0.15f), 0.62f);
         }
 
         if (world.CriticalMutationActive)
         {
-            fogColor = Vector3.Lerp(fogColor, new Vector3(0.30f, 0.10f, 0.19f), 0.24f);
-            fogNearFactor *= 0.84f;
-            fogFarFactor *= 0.84f;
+            fogColor = Vector3.Lerp(fogColor, new Vector3(0.30f, 0.10f, 0.19f), 0.28f);
+            fogNearFactor *= 0.82f;
+            fogFarFactor *= 0.82f;
         }
 
         var fogNear = MathF.Max(1.0f, debugSettings.FogNear * fogNearFactor);

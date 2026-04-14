@@ -31,6 +31,7 @@ public sealed class GameApp : IGameStateContext, IDisposable
     public GameApp(GameConfig config)
     {
         Config = config;
+        ApplyDebugDefaults(config);
         _hostWindow = new GameHostWindow(config.Window);
 
         var window = _hostWindow.Window;
@@ -176,5 +177,13 @@ public sealed class GameApp : IGameStateContext, IDisposable
             AppStateId.Gameplay => new GameplayState(this),
             _ => throw new ArgumentOutOfRangeException(nameof(stateId), stateId, null)
         };
+    }
+
+    private void ApplyDebugDefaults(GameConfig config)
+    {
+        DebugSettings.CameraYawDegrees = config.Camera.YawDegrees;
+        DebugSettings.CameraPitchDegrees = config.Camera.PitchDegrees;
+        DebugSettings.CameraDistance = config.Camera.Distance;
+        DebugSettings.CameraHeight = config.Camera.Height;
     }
 }

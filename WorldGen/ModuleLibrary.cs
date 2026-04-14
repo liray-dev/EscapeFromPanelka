@@ -6,14 +6,26 @@ public sealed class ModuleLibrary
     private readonly Dictionary<string, PropDefinition> _propsById;
     private readonly Dictionary<string, List<PropDefinition>> _propsBySlotType;
 
-    public ModuleLibrary(ModuleLibraryConfig config)
+    public ModuleLibrary(ModuleLibraryConfig config, float roomSizeMultiplier = 1f)
     {
-        _modulesById = config.Modules.ToDictionary(x => x.Id, x => x, StringComparer.OrdinalIgnoreCase);
-        _propsById = config.Props.ToDictionary(x => x.Id, x => x, StringComparer.OrdinalIgnoreCase);
-        _propsBySlotType = config.Props
+        RoomSizeMultiplier = Math.Clamp(roomSizeMultiplier, 0.75f, 1.80f);
+
+        var scaledModules = config.Modules
+            .Select(x => CloneModule(x, RoomSizeMultiplier))
+            .ToList();
+
+        var props = config.Props
+            .Select(CloneProp)
+            .ToList();
+
+        _modulesById = scaledModules.ToDictionary(x => x.Id, x => x, StringComparer.OrdinalIgnoreCase);
+        _propsById = props.ToDictionary(x => x.Id, x => x, StringComparer.OrdinalIgnoreCase);
+        _propsBySlotType = props
             .GroupBy(x => x.SlotType, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(x => x.Key, x => x.ToList(), StringComparer.OrdinalIgnoreCase);
     }
+
+    public float RoomSizeMultiplier { get; }
 
     public ModuleDefinition GetModule(string id)
     {
@@ -34,5 +46,54 @@ public sealed class ModuleLibrary
         return _propsBySlotType.TryGetValue(slotType, out var props)
             ? props
             : [];
+    }
+
+    private static ModuleDefinition CloneModule(ModuleDefinition source, float roomSizeMultiplier)
+    {
+        var clampedMultiplier = Math.Clamp(roomSizeMultiplier, 0.75f, 1.80f);
+
+        return new ModuleDefinition
+        {
+            Id = source.Id,
+            Archetype = source.Archetype,
+            Width = source.Width * clampedMultiplier,
+            Length = source.Length * clampedMultiplier,
+            FloorHeight = source.FloorHeight,
+            WallHeight = source.WallHeight,
+            WallThickness = source.WallThickness,
+            FloorColor = source.FloorColor.ToArray(),
+            WallColor = source.WallColor.ToArray(),
+            Tags = source.Tags.ToList(),
+            Connections = source.Connections.Select(x => new ConnectionSocketDefinition
+            {
+                Id = x.Id,
+                Direction = x.Direction,
+                Kind = x.Kind,
+                Offset = x.Offset * clampedMultiplier,
+                OpeningWidth = x.OpeningWidth * clampedMultiplier
+            }).ToList(),
+            PropSockets = source.PropSockets.Select(x => new PropSocketDefinition
+            {
+                Id = x.Id,
+                SlotType = x.SlotType,
+                LocalX = x.LocalX * clampedMultiplier,
+                LocalY = x.LocalY,
+                LocalZ = x.LocalZ * clampedMultiplier,
+                RotationDegrees = x.RotationDegrees,
+                SpawnChance = x.SpawnChance,
+                AllowedProps = x.AllowedProps.ToList()
+            }).ToList()
+        };
+    }
+
+    private static PropDefinition CloneProp(PropDefinition source)
+    {
+        return new PropDefinition
+        {
+            Id = source.Id,
+            SlotType = source.SlotType,
+            Size = source.Size.ToArray(),
+            Color = source.Color.ToArray()
+        };
     }
 }

@@ -17,10 +17,13 @@ public sealed class PlayerCube(float moveSpeed, float collisionRadius, Vector3? 
 
     public Vector3 CreateMoveDelta(Vector2 moveInput, float deltaTime)
     {
-        var direction = new Vector3(moveInput.X, 0f, moveInput.Y);
-        if (direction.LengthSquared() > 1f) direction = Vector3.Normalize(direction);
+        var localDirection = new Vector3(moveInput.X, 0f, moveInput.Y);
+        if (localDirection.LengthSquared() > 1f) localDirection = Vector3.Normalize(localDirection);
 
-        return direction * (moveSpeed * deltaTime);
+        var rotatedDirection = Vector3.Transform(localDirection,
+            Quaternion.CreateFromAxisAngle(Vector3.UnitY, Transform.Rotation.Y));
+
+        return rotatedDirection * (moveSpeed * deltaTime);
     }
 
     public void Move(Vector2 moveInput, float deltaTime)
@@ -30,20 +33,19 @@ public sealed class PlayerCube(float moveSpeed, float collisionRadius, Vector3? 
 
     public void SetPosition(Vector3 position)
     {
-        Transform.Position = position with { Y = 0.5f };
+        Transform.Position = new Vector3(position.X, 0.5f, position.Z);
     }
 
     public void RotateYaw(float deltaYawRadians)
     {
-        Transform.Rotation = Transform.Rotation with { Y = NormalizeAngle(Transform.Rotation.Y + deltaYawRadians) };
+        Transform.Rotation = new Vector3(Transform.Rotation.X, NormalizeAngle(Transform.Rotation.Y + deltaYawRadians),
+            Transform.Rotation.Z);
     }
 
     private static float NormalizeAngle(float angle)
     {
         while (angle > MathF.PI) angle -= MathF.Tau;
-
         while (angle < -MathF.PI) angle += MathF.Tau;
-
         return angle;
     }
 }

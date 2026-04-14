@@ -8,7 +8,11 @@ public sealed class StructureAssembler
 {
     public ProceduralSector Assemble(StructureBlueprint blueprint, ModuleLibrary library)
     {
-        var sector = new ProceduralSector { Seed = blueprint.Seed };
+        var sector = new ProceduralSector
+        {
+            Seed = blueprint.Seed,
+            RoomSizeMultiplier = library.RoomSizeMultiplier
+        };
         var rng = new Random(blueprint.Seed);
         var placedByNodeId = new Dictionary<string, PlacedModule>(StringComparer.OrdinalIgnoreCase);
 
@@ -24,7 +28,6 @@ public sealed class StructureAssembler
             else
             {
                 var parent = placedByNodeId[step.ParentNodeId];
-                var parentSocket = parent.GetSocket(step.ParentSocketId);
                 var childSocket = definition.Connections.FirstOrDefault(x =>
                                       x.Id.Equals(step.ChildSocketId, StringComparison.OrdinalIgnoreCase))
                                   ?? throw new InvalidOperationException(
@@ -51,16 +54,21 @@ public sealed class StructureAssembler
         var serviceNook = placedByNodeId["service_nook"];
         var hallB = placedByNodeId["hall_b"];
         var objectiveRoom = placedByNodeId["objective_room"];
+        var scale = sector.RoomSizeMultiplier;
 
         sector.SafeBlockCenter = safeBlock.Position;
-        sector.ExtractionConsolePoint = safeBlock.ToWorldPosition(new Vector3(2.15f, 0.95f, -1.25f));
-        sector.PowerSwitchPoint = serviceNook.ToWorldPosition(new Vector3(2.05f, 0.95f, -1.10f));
+        sector.ExtractionConsolePoint =
+            safeBlock.ToWorldPosition(ScalePlanar(new Vector3(2.15f, 0.95f, -1.25f), scale));
+        sector.PowerSwitchPoint = serviceNook.ToWorldPosition(ScalePlanar(new Vector3(2.05f, 0.95f, -1.10f), scale));
         sector.ObjectivePoint = objectiveRoom.Position + new Vector3(0f, 0.85f, 0f);
         sector.PlayerSpawn = sector.SafeBlockCenter + new Vector3(0f, 0.5f, 0f);
 
         BuildGeometry(sector);
-        BuildFeatures(sector, safeBlock, hallA, serviceNook, hallB, objectiveRoom);
+        BuildFeatures(sector, safeBlock, hallA, serviceNook, hallB, objectiveRoom, scale);
         SpawnProps(sector, library, rng);
+        BuildLights(sector);
+        BuildInfectedZones(sector, hallA, hallB, objectiveRoom, scale);
+        BuildHostiles(sector, hallB, objectiveRoom, scale);
         ComputeBounds(sector);
         return sector;
     }
@@ -75,24 +83,24 @@ public sealed class StructureAssembler
     }
 
     private static void BuildFeatures(ProceduralSector sector, PlacedModule safeBlock, PlacedModule hallA,
-        PlacedModule serviceNook, PlacedModule hallB, PlacedModule objectiveRoom)
+        PlacedModule serviceNook, PlacedModule hallB, PlacedModule objectiveRoom, float scale)
     {
         var extractionConsole = new WorldRenderable(
             WorldPrimitiveType.Cube,
             CreateWorldTransform(
                 safeBlock,
-                new Vector3(2.15f, 0.52f, -1.25f),
+                ScalePlanar(new Vector3(2.15f, 0.52f, -1.25f), scale),
                 Vector3.Zero,
-                new Vector3(0.38f, 1.04f, 0.24f)),
+                ScalePlanar(new Vector3(0.38f, 1.04f, 0.24f), scale)),
             new Vector4(0.32f, 0.58f, 0.64f, 1f));
 
         var powerConsole = new WorldRenderable(
             WorldPrimitiveType.Cube,
             CreateWorldTransform(
                 serviceNook,
-                new Vector3(2.05f, 0.56f, -1.10f),
+                ScalePlanar(new Vector3(2.05f, 0.56f, -1.10f), scale),
                 Vector3.Zero,
-                new Vector3(0.36f, 1.12f, 0.24f)),
+                ScalePlanar(new Vector3(0.36f, 1.12f, 0.24f), scale)),
             new Vector4(0.64f, 0.52f, 0.18f, 1f));
 
         sector.FeatureGeometry.Add(extractionConsole);
@@ -102,9 +110,10 @@ public sealed class StructureAssembler
             WorldPrimitiveType.Cube,
             CreateWorldTransform(
                 hallA,
-                new Vector3(0.8f, 1.12f, -hallA.Definition.Length * 0.5f + hallA.Definition.WallThickness * 0.5f),
+                new Vector3(0.8f * scale, 1.12f,
+                    -hallA.Definition.Length * 0.5f + hallA.Definition.WallThickness * 0.5f),
                 Vector3.Zero,
-                new Vector3(1.82f, 2.24f, 0.18f)),
+                new Vector3(1.82f * scale, 2.24f, hallA.Definition.WallThickness)),
             new Vector4(0.54f, 0.58f, 0.62f, 1f));
 
         var archiveBulkhead = new WorldRenderable(
@@ -113,17 +122,17 @@ public sealed class StructureAssembler
                 hallB,
                 new Vector3(hallB.Definition.Width * 0.5f - hallB.Definition.WallThickness * 0.5f, 1.15f, 0f),
                 Vector3.Zero,
-                new Vector3(0.32f, 2.30f, 1.92f)),
+                new Vector3(hallB.Definition.WallThickness + 0.14f, 2.30f, 1.92f * scale)),
             new Vector4(0.66f, 0.20f, 0.18f, 1f));
 
         var quarantineShutter = new WorldRenderable(
             WorldPrimitiveType.Cube,
             CreateWorldTransform(
                 hallA,
-                new Vector3(0.8f, 1.15f,
+                new Vector3(0.8f * scale, 1.15f,
                     -hallA.Definition.Length * 0.5f + hallA.Definition.WallThickness * 0.5f - 0.24f),
                 Vector3.Zero,
-                new Vector3(2.10f, 2.30f, 0.28f)),
+                new Vector3(2.10f * scale, 2.30f, 0.28f)),
             new Vector4(0.62f, 0.14f, 0.22f, 1f));
 
         sector.LockablePassages.Add(new LockablePassage(
@@ -152,28 +161,146 @@ public sealed class StructureAssembler
             WorldPrimitiveType.Cube,
             CreateWorldTransform(
                 hallA,
-                new Vector3(0.4f, 0.62f, -hallA.Definition.Length * 0.5f + 1.05f),
+                new Vector3(0.4f * scale, 0.62f, -hallA.Definition.Length * 0.5f + 1.05f * scale),
                 Vector3.Zero,
-                new Vector3(2.85f, 1.22f, 1.45f)),
+                new Vector3(2.85f * scale, 1.22f, 1.45f * scale)),
             new Vector4(0.42f, 0.11f, 0.22f, 1f)));
 
         sector.CriticalMutationGeometry.Add(new WorldRenderable(
             WorldPrimitiveType.Cube,
             CreateWorldTransform(
                 hallA,
-                new Vector3(1.35f, 1.66f, -hallA.Definition.Length * 0.5f + 1.15f),
+                new Vector3(1.35f * scale, 1.66f, -hallA.Definition.Length * 0.5f + 1.15f * scale),
                 Vector3.Zero,
-                new Vector3(1.10f, 0.92f, 0.86f)),
+                new Vector3(1.10f * scale, 0.92f, 0.86f * scale)),
             new Vector4(0.54f, 0.14f, 0.25f, 1f)));
 
         sector.CriticalMutationGeometry.Add(new WorldRenderable(
             WorldPrimitiveType.Cube,
             CreateWorldTransform(
                 objectiveRoom,
-                new Vector3(2.4f, 0.72f, -2.1f),
+                ScalePlanar(new Vector3(2.4f, 0.72f, -2.1f), scale),
                 Vector3.Zero,
-                new Vector3(1.28f, 1.44f, 1.05f)),
+                ScalePlanar(new Vector3(1.28f, 1.44f, 1.05f), scale)),
             new Vector4(0.36f, 0.10f, 0.20f, 1f)));
+    }
+
+    private static void BuildLights(ProceduralSector sector)
+    {
+        var index = 0;
+        foreach (var module in sector.Modules)
+        {
+            var lightLocalPosition = new Vector3(0f, module.Definition.WallHeight - 0.42f, 0f);
+            var lightPosition = module.ToWorldPosition(lightLocalPosition);
+            var fixtureScale = new Vector3(0.32f, 0.14f, 0.32f);
+            var fixtureTint = ResolveLightFixtureTint(module.Definition.Archetype);
+            var lightColor = ResolveLightColor(module.Definition.Archetype);
+            var radius = ResolveLightRadius(module.Definition.Archetype, module.Definition.Width,
+                module.Definition.Length);
+            var intensity = ResolveLightIntensity(module.Definition.Archetype);
+            var flickerSpeed = module.Definition.Archetype is "service" or "objective" ? 4.6f : 0.8f;
+            var emergency = module.Definition.Archetype is not "safe";
+
+            sector.FeatureGeometry.Add(new WorldRenderable(
+                WorldPrimitiveType.Cube,
+                new Transform
+                {
+                    Position = lightPosition,
+                    Scale = fixtureScale
+                },
+                fixtureTint));
+
+            sector.Lights.Add(new WorldLight(
+                $"light_{module.NodeId}",
+                lightPosition,
+                lightColor,
+                radius,
+                intensity,
+                flickerSpeed,
+                index * 0.71f,
+                emergency));
+
+            index++;
+        }
+    }
+
+    private static void BuildInfectedZones(ProceduralSector sector, PlacedModule hallA, PlacedModule hallB,
+        PlacedModule objectiveRoom, float scale)
+    {
+        var hallZoneCenter = hallB.ToWorldPosition(ScalePlanar(new Vector3(0.2f, 0.02f, 0f), scale));
+        var hallZoneRenderable = new WorldRenderable(
+            WorldPrimitiveType.Cube,
+            new Transform
+            {
+                Position = hallZoneCenter + new Vector3(0f, 0.03f, 0f),
+                Scale = new Vector3(2.8f * scale, 0.06f, 2.0f * scale)
+            },
+            new Vector4(0.42f, 0.08f, 0.14f, 1f));
+
+        var objectiveZoneCenter = objectiveRoom.ToWorldPosition(ScalePlanar(new Vector3(-0.8f, 0.02f, 0.6f), scale));
+        var objectiveZoneRenderable = new WorldRenderable(
+            WorldPrimitiveType.Cube,
+            new Transform
+            {
+                Position = objectiveZoneCenter + new Vector3(0f, 0.03f, 0f),
+                Scale = new Vector3(3.0f * scale, 0.06f, 2.6f * scale)
+            },
+            new Vector4(0.52f, 0.10f, 0.18f, 1f));
+
+        var corridorZoneCenter = hallA.ToWorldPosition(ScalePlanar(new Vector3(1.0f, 0.02f, 1.8f), scale));
+        var corridorZoneRenderable = new WorldRenderable(
+            WorldPrimitiveType.Cube,
+            new Transform
+            {
+                Position = corridorZoneCenter + new Vector3(0f, 0.03f, 0f),
+                Scale = new Vector3(2.2f * scale, 0.06f, 1.8f * scale)
+            },
+            new Vector4(0.34f, 0.08f, 0.13f, 1f));
+
+        sector.InfectedZones.Add(new InfectedZone(
+            "infected_hall_b",
+            "Архивный коридор затягивает слизью",
+            hallZoneCenter,
+            1.55f * scale,
+            RaidPressureLevel.Pressure,
+            0.78f,
+            hallZoneRenderable));
+
+        sector.InfectedZones.Add(new InfectedZone(
+            "infected_objective",
+            "Архивная комната заражена",
+            objectiveZoneCenter,
+            1.85f * scale,
+            RaidPressureLevel.Pressure,
+            0.68f,
+            objectiveZoneRenderable));
+
+        sector.InfectedZones.Add(new InfectedZone(
+            "infected_hall_a",
+            "Коридор режет фиолетовым туманом",
+            corridorZoneCenter,
+            1.25f * scale,
+            RaidPressureLevel.Critical,
+            0.72f,
+            corridorZoneRenderable));
+    }
+
+    private static void BuildHostiles(ProceduralSector sector, PlacedModule hallB, PlacedModule objectiveRoom,
+        float scale)
+    {
+        sector.Hostiles.Add(new HostileEntity(
+            "lurker_hall",
+            "Лестничный обитатель",
+            hallB.ToWorldPosition(ScalePlanar(new Vector3(-0.7f, 0f, 0.7f), scale)),
+            new Vector4(0.34f, 0.37f, 0.42f, 1f),
+            new Vector4(0.72f, 0.28f, 0.34f, 1f)));
+
+        sector.Hostiles.Add(new HostileEntity(
+            "lurker_archive",
+            "Архивная тварь",
+            objectiveRoom.ToWorldPosition(ScalePlanar(new Vector3(1.5f, 0f, -1.0f), scale)),
+            new Vector4(0.28f, 0.32f, 0.30f, 1f),
+            new Vector4(0.82f, 0.24f, 0.30f, 1f)));
     }
 
     private static void AddFloor(List<WorldRenderable> geometry, PlacedModule module)
@@ -386,7 +513,9 @@ public sealed class StructureAssembler
         return new Transform
         {
             Position = module.ToWorldPosition(localPosition),
-            Rotation = localRotationRadians with { Y = MathF.PI / 180f * module.RotationDegrees + localRotationRadians.Y },
+            Rotation = new Vector3(localRotationRadians.X,
+                MathF.PI / 180f * module.RotationDegrees + localRotationRadians.Y,
+                localRotationRadians.Z),
             Scale = localScale
         };
     }
@@ -404,5 +533,55 @@ public sealed class StructureAssembler
         var b = color.Count > 2 ? color[2] : 1f;
         var a = color.Count > 3 ? color[3] : 1f;
         return new Vector4(r, g, b, a);
+    }
+
+    private static Vector3 ScalePlanar(Vector3 value, float multiplier)
+    {
+        return new Vector3(value.X * multiplier, value.Y, value.Z * multiplier);
+    }
+
+    private static Vector4 ResolveLightFixtureTint(string archetype)
+    {
+        return archetype switch
+        {
+            "safe" => new Vector4(0.92f, 0.88f, 0.70f, 1f),
+            "service" => new Vector4(0.74f, 0.66f, 0.40f, 1f),
+            "objective" => new Vector4(0.70f, 0.52f, 0.52f, 1f),
+            _ => new Vector4(0.76f, 0.78f, 0.82f, 1f)
+        };
+    }
+
+    private static Vector3 ResolveLightColor(string archetype)
+    {
+        return archetype switch
+        {
+            "safe" => new Vector3(1.00f, 0.94f, 0.82f),
+            "service" => new Vector3(0.95f, 0.82f, 0.58f),
+            "objective" => new Vector3(0.86f, 0.74f, 0.72f),
+            "stair" => new Vector3(0.84f, 0.90f, 0.98f),
+            _ => new Vector3(0.78f, 0.84f, 0.92f)
+        };
+    }
+
+    private static float ResolveLightRadius(string archetype, float width, float length)
+    {
+        var baseRadius = MathF.Max(width, length) * 0.9f;
+        return archetype switch
+        {
+            "safe" => baseRadius + 1.8f,
+            "objective" => baseRadius + 1.2f,
+            _ => baseRadius
+        };
+    }
+
+    private static float ResolveLightIntensity(string archetype)
+    {
+        return archetype switch
+        {
+            "safe" => 1.18f,
+            "service" => 0.94f,
+            "objective" => 0.88f,
+            _ => 1.00f
+        };
     }
 }

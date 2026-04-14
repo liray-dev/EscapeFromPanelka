@@ -9,7 +9,7 @@ public sealed class HudScreen(IGameStateContext context) : Screen(context)
 {
     public void Draw(string stateName, World.World world, FrameStats frameStats)
     {
-        var panel = new RectF(16f, 16f, 560f, 224f);
+        var panel = new RectF(16f, 16f, 650f, 260f);
         Fill(panel, ColorRgba.FromBytes(18, 22, 28, 216));
         DrawOutline(panel, 2f, ColorRgba.FromBytes(88, 104, 120));
 
@@ -18,36 +18,40 @@ public sealed class HudScreen(IGameStateContext context) : Screen(context)
         DrawText(new Vector2(30f, 70f),
             $"Position: {world.Player.Transform.Position.X:0.00}  {world.Player.Transform.Position.Y:0.00}  {world.Player.Transform.Position.Z:0.00}",
             0.34f, ColorRgba.FromBytes(187, 196, 205));
-        DrawText(new Vector2(30f, 88f), $"Rotation Y: {world.Player.YawDegrees:0.00}°", 0.34f,
-            ColorRgba.FromBytes(187, 196, 205));
+        DrawText(new Vector2(30f, 88f),
+            $"Rotation Y: {world.Player.YawDegrees:0.00}°   Move scale: {world.PlayerMoveScale:0.00}",
+            0.34f, ColorRgba.FromBytes(187, 196, 205));
         DrawText(new Vector2(30f, 106f),
-            $"Seed: {world.Seed}   Modules: {world.ModuleCount}   Props: {world.PropCount}", 0.34f,
-            ColorRgba.FromBytes(187, 196, 205));
+            $"Seed: {world.Seed}   Modules: {world.ModuleCount}   Props: {world.PropCount}   Room x{world.RoomSizeMultiplier:0.00}",
+            0.34f, ColorRgba.FromBytes(187, 196, 205));
         DrawText(new Vector2(30f, 124f),
             $"Doors: {world.DoorCount}   Blocked: {world.LockedPassageCount}   Power: {(world.PowerRestored ? "restored" : "offline")}",
             0.34f, world.PowerRestored ? ColorRgba.FromBytes(168, 204, 176) : ColorRgba.FromBytes(231, 179, 96));
-        DrawText(new Vector2(30f, 142f), $"Objective: {world.ObjectiveLabel}", 0.34f,
+        DrawText(new Vector2(30f, 142f),
+            $"Lights: {world.LightCount}   Infected: {world.ActiveInfectedZoneCount}   Hostiles alert: {world.AlertedHostileCount}",
+            0.34f, ColorRgba.FromBytes(214, 220, 227));
+        DrawText(new Vector2(30f, 160f), $"Objective: {world.ObjectiveLabel}", 0.34f,
             ColorRgba.FromBytes(214, 220, 227));
-        DrawText(new Vector2(30f, 160f), $"Pressure: {world.PressureLabel}   Time: {world.TimeRemainingSeconds:0.0}s",
+        DrawText(new Vector2(30f, 178f), $"Pressure: {world.PressureLabel}   Time: {world.TimeRemainingSeconds:0.0}s",
             0.34f, GetPressureColor(world));
-        DrawText(new Vector2(30f, 178f),
+        DrawText(new Vector2(30f, 196f),
             $"Mutation: {(world.CriticalMutationActive ? "active" : "dormant")}   Ignore collision: {(world.IgnoreCollision ? "on" : "off")}",
             0.34f,
             world.CriticalMutationActive ? ColorRgba.FromBytes(212, 126, 151) : ColorRgba.FromBytes(187, 196, 205));
-        DrawText(new Vector2(30f, 196f),
+        DrawText(new Vector2(30f, 214f),
             $"FPS: {frameStats.FramesPerSecond:0.0}   Frame: {frameStats.FrameTimeMs:0.00} ms", 0.34f,
             ColorRgba.FromBytes(187, 196, 205));
 
-        var hint = new RectF(16f, Context.Window.Size.Y - 52f, 760f, 36f);
+        var hint = new RectF(16f, Context.Window.Size.Y - 52f, 820f, 36f);
         Fill(hint, ColorRgba.FromBytes(18, 22, 28, 196));
         DrawOutline(hint, 2f, ColorRgba.FromBytes(88, 104, 120));
         DrawText(new Vector2(28f, Context.Window.Size.Y - 41f),
-            "WASD — движение   ПКМ + мышь — поворот   E — взаимодействие   R — новый сектор   F1 — debug   Escape — в меню",
+            "WASD — движение по yaw   ПКМ + мышь — поворот   E — взаимодействие   R — новый сектор   F1 — debug   Escape — в меню",
             0.34f, ColorRgba.FromBytes(214, 220, 227));
 
         if (!string.IsNullOrWhiteSpace(world.ContextHint))
         {
-            var contextBox = new RectF(16f, Context.Window.Size.Y - 140f, 560f, 34f);
+            var contextBox = new RectF(16f, Context.Window.Size.Y - 140f, 620f, 34f);
             Fill(contextBox, ColorRgba.FromBytes(48, 36, 26, 214));
             DrawOutline(contextBox, 2f, ColorRgba.FromBytes(170, 124, 74));
             DrawText(new Vector2(28f, Context.Window.Size.Y - 129f), world.ContextHint, 0.34f,
@@ -56,7 +60,7 @@ public sealed class HudScreen(IGameStateContext context) : Screen(context)
 
         if (world.CanInteract)
         {
-            var interactBox = new RectF(16f, Context.Window.Size.Y - 96f, 560f, 34f);
+            var interactBox = new RectF(16f, Context.Window.Size.Y - 96f, 620f, 34f);
             Fill(interactBox, ColorRgba.FromBytes(28, 38, 44, 218));
             DrawOutline(interactBox, 2f, ColorRgba.FromBytes(108, 164, 160));
             DrawText(new Vector2(28f, Context.Window.Size.Y - 85f), world.InteractionPrompt, 0.36f,

@@ -53,7 +53,7 @@ public sealed class DebugOverlay(GL gl, IWindow window, IInputContext inputConte
 
     private void DrawWindows()
     {
-        ImGui.SetNextWindowSize(new Vector2(420f, 420f), ImGuiCond.FirstUseEver);
+        ImGui.SetNextWindowSize(new Vector2(460f, 640f), ImGuiCond.FirstUseEver);
         var open = settings.Enabled;
 
         if (ImGui.Begin("Panelka Debug", ref open, ImGuiWindowFlags.NoCollapse))
@@ -67,6 +67,7 @@ public sealed class DebugOverlay(GL gl, IWindow window, IInputContext inputConte
             }
 
             ImGui.Separator();
+            ImGui.TextUnformatted("World");
 
             var ignoreCollisions = settings.IgnoreCollisions;
             if (ImGui.Checkbox("Ignore collisions", ref ignoreCollisions)) settings.IgnoreCollisions = ignoreCollisions;
@@ -75,8 +76,37 @@ public sealed class DebugOverlay(GL gl, IWindow window, IInputContext inputConte
             if (ImGui.Checkbox("Allow critical mutation", ref allowCriticalMutation))
                 settings.AllowCriticalMutation = allowCriticalMutation;
 
-            var showDemoWindow = settings.ShowDemoWindow;
-            if (ImGui.Checkbox("Show ImGui demo", ref showDemoWindow)) settings.ShowDemoWindow = showDemoWindow;
+            var roomSizeMultiplier = settings.RoomSizeMultiplier;
+            if (ImGui.SliderFloat("Room size multiplier", ref roomSizeMultiplier, 0.75f, 1.80f))
+                settings.RoomSizeMultiplier = roomSizeMultiplier;
+
+            ImGui.Separator();
+            ImGui.TextUnformatted("Camera");
+
+            var cameraYaw = settings.CameraYawDegrees;
+            if (ImGui.SliderFloat("Camera yaw", ref cameraYaw, -180f, 180f)) settings.CameraYawDegrees = cameraYaw;
+
+            var cameraPitch = settings.CameraPitchDegrees;
+            if (ImGui.SliderFloat("Camera pitch", ref cameraPitch, 18f, 82f))
+                settings.CameraPitchDegrees = cameraPitch;
+
+            var cameraDistance = settings.CameraDistance;
+            if (ImGui.SliderFloat("Camera distance", ref cameraDistance, 4f, 24f))
+                settings.CameraDistance = cameraDistance;
+
+            var cameraHeight = settings.CameraHeight;
+            if (ImGui.SliderFloat("Camera height", ref cameraHeight, 2f, 24f)) settings.CameraHeight = cameraHeight;
+
+            var followSmoothing = settings.CameraFollowSmoothing;
+            if (ImGui.SliderFloat("Follow smoothing", ref followSmoothing, 0.05f, 1.00f))
+                settings.CameraFollowSmoothing = followSmoothing;
+
+            ImGui.Separator();
+            ImGui.TextUnformatted("Player");
+
+            var rotationSpeedMultiplier = settings.RotationSpeedMultiplier;
+            if (ImGui.SliderFloat("Yaw speed multiplier", ref rotationSpeedMultiplier, 0.10f, 1.40f))
+                settings.RotationSpeedMultiplier = rotationSpeedMultiplier;
 
             ImGui.Separator();
             ImGui.TextUnformatted("Lighting");
@@ -108,6 +138,12 @@ public sealed class DebugOverlay(GL gl, IWindow window, IInputContext inputConte
             var fogFar = settings.FogFar;
             if (ImGui.SliderFloat("Fog far", ref fogFar, 2.0f, 140.0f))
                 settings.FogFar = MathF.Max(fogFar, settings.FogNear + 1.0f);
+
+            ImGui.Separator();
+            ImGui.TextUnformatted("ImGui");
+
+            var showDemoWindow = settings.ShowDemoWindow;
+            if (ImGui.Checkbox("Show ImGui demo", ref showDemoWindow)) settings.ShowDemoWindow = showDemoWindow;
 
             ImGui.Separator();
             ImGui.TextWrapped(
