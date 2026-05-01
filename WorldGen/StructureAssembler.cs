@@ -6,7 +6,7 @@ namespace EFP.WorldGen;
 
 public sealed class StructureAssembler
 {
-    public ProceduralSector Assemble(StructureBlueprint blueprint, ModuleLibrary library)
+    public static ProceduralSector Assemble(StructureBlueprint blueprint, ModuleLibrary library)
     {
         var sector = new ProceduralSector
         {
@@ -69,6 +69,7 @@ public sealed class StructureAssembler
         BuildLights(sector);
         BuildInfectedZones(sector, hallA, hallB, objectiveRoom, scale);
         BuildHostiles(sector, hallB, objectiveRoom, scale);
+        BuildLoot(sector, safeBlock, hallA, serviceNook, hallB, objectiveRoom, scale);
         ComputeBounds(sector);
         return sector;
     }
@@ -264,6 +265,8 @@ public sealed class StructureAssembler
             1.55f * scale,
             RaidPressureLevel.Pressure,
             0.78f,
+            7.5f,
+            0.12f,
             hallZoneRenderable));
 
         sector.InfectedZones.Add(new InfectedZone(
@@ -273,6 +276,8 @@ public sealed class StructureAssembler
             1.85f * scale,
             RaidPressureLevel.Pressure,
             0.68f,
+            10.0f,
+            0.16f,
             objectiveZoneRenderable));
 
         sector.InfectedZones.Add(new InfectedZone(
@@ -282,6 +287,8 @@ public sealed class StructureAssembler
             1.25f * scale,
             RaidPressureLevel.Critical,
             0.72f,
+            13.0f,
+            0.18f,
             corridorZoneRenderable));
     }
 
@@ -301,6 +308,70 @@ public sealed class StructureAssembler
             objectiveRoom.ToWorldPosition(ScalePlanar(new Vector3(1.5f, 0f, -1.0f), scale)),
             new Vector4(0.28f, 0.32f, 0.30f, 1f),
             new Vector4(0.82f, 0.24f, 0.30f, 1f)));
+    }
+
+
+    private static void BuildLoot(ProceduralSector sector, PlacedModule safeBlock, PlacedModule hallA,
+        PlacedModule serviceNook, PlacedModule hallB, PlacedModule objectiveRoom, float scale)
+    {
+        sector.Loot.Add(CreateLootPickup(
+            "medkit_service",
+            "аптечка ликвидатора",
+            LootKind.Medkit,
+            serviceNook,
+            ScalePlanar(new Vector3(-1.35f, 0.38f, 1.10f), scale),
+            new Vector3(0.26f, 0.26f, 0.26f),
+            new Vector4(0.26f, 0.72f, 0.46f, 1f),
+            0,
+            1));
+
+        sector.Loot.Add(CreateLootPickup(
+            "filter_corridor",
+            "фильтр грубой очистки",
+            LootKind.Filter,
+            hallA,
+            ScalePlanar(new Vector3(-1.10f, 0.34f, 1.05f), scale),
+            new Vector3(0.24f, 0.22f, 0.24f),
+            new Vector4(0.68f, 0.74f, 0.30f, 1f),
+            28));
+
+        sector.Loot.Add(CreateLootPickup(
+            "battery_stair",
+            "аварийный аккумулятор",
+            LootKind.Battery,
+            hallB,
+            ScalePlanar(new Vector3(0.95f, 0.34f, -1.10f), scale),
+            new Vector3(0.24f, 0.24f, 0.24f),
+            new Vector4(0.30f, 0.64f, 0.76f, 1f),
+            36));
+
+        sector.Loot.Add(CreateLootPickup(
+            "scrap_archive",
+            "ящик с редкими реагентами",
+            LootKind.Reagent,
+            objectiveRoom,
+            ScalePlanar(new Vector3(2.15f, 0.36f, 1.35f), scale),
+            new Vector3(0.30f, 0.30f, 0.30f),
+            new Vector4(0.70f, 0.40f, 0.82f, 1f),
+            54));
+
+        sector.Loot.Add(CreateLootPickup(
+            "scrap_safe",
+            "контейнер с ломом",
+            LootKind.Scrap,
+            safeBlock,
+            ScalePlanar(new Vector3(-1.75f, 0.34f, 1.40f), scale),
+            new Vector3(0.24f, 0.24f, 0.24f),
+            new Vector4(0.66f, 0.52f, 0.32f, 1f),
+            18));
+    }
+
+    private static LootPickup CreateLootPickup(string id, string label, LootKind kind, PlacedModule module,
+        Vector3 localPosition, Vector3 scale, Vector4 tint, int value, int medkitCount = 0)
+    {
+        var transform = CreateWorldTransform(module, localPosition, Vector3.Zero, scale);
+        var renderable = new WorldRenderable(WorldPrimitiveType.Cube, transform, tint);
+        return new LootPickup(id, label, kind, transform.Position, renderable, value, medkitCount);
     }
 
     private static void AddFloor(List<WorldRenderable> geometry, PlacedModule module)

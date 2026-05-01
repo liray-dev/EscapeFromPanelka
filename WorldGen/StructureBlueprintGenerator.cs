@@ -2,7 +2,7 @@ namespace EFP.WorldGen;
 
 public sealed class StructureBlueprintGenerator
 {
-    public StructureBlueprint Generate(int seed)
+    public static StructureBlueprint Generate(int seed)
     {
         return new StructureBlueprint
         {

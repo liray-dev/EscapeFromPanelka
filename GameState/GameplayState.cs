@@ -16,11 +16,13 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
     private readonly HudScreen _hudScreen = new(context);
     private readonly StructureAssembler _structureAssembler = new();
     private TopDownCamera? _camera;
+    private bool _lastQuietMovement;
     private float _lastRoomSizeMultiplier = 1f;
     private ModuleLibraryConfig? _moduleConfig;
     private Vector2 _movementInput;
+    private bool _queuedInteract;
+    private bool _queuedUseMedkit;
     private int _seed;
-
     private World.World? _world;
 
     public string Name => "GameplayState";
@@ -74,6 +76,9 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
         }
 
         _movementInput = captureKeyboard ? Vector2.Zero : ReadMovementInput(input);
+        _lastQuietMovement = !captureKeyboard && (input.IsKeyDown(Key.ShiftLeft) || input.IsKeyDown(Key.ShiftRight));
+        if (!captureKeyboard && input.IsKeyPressed(Key.E)) _queuedInteract = true;
+        if (!captureKeyboard && input.IsKeyPressed(Key.Q)) _queuedUseMedkit = true;
 
         if (!captureMouse && input.IsMouseDown(MouseButton.Right))
         {
@@ -88,11 +93,20 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
 
     public void FixedUpdate(double fixedDeltaTime)
     {
-        _world?.Tick(
+        if (_world is null) return;
+
+        var interact = _queuedInteract;
+        var useMedkit = _queuedUseMedkit;
+        _queuedInteract = false;
+        _queuedUseMedkit = false;
+
+        _world.Tick(
             (float)fixedDeltaTime,
             _movementInput,
-            !context.DebugSettings.CaptureKeyboard && context.Input.IsKeyPressed(Key.E),
-            context.DebugSettings.AllowCriticalMutation);
+            interact,
+            context.DebugSettings.AllowCriticalMutation,
+            _lastQuietMovement,
+            useMedkit);
     }
 
     public void Render(float alpha)
@@ -125,12 +139,14 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
         _seed = seed;
         var roomSizeMultiplier = Math.Clamp(context.DebugSettings.RoomSizeMultiplier, 0.75f, 1.80f);
         var library = new ModuleLibrary(_moduleConfig, roomSizeMultiplier);
-        var blueprint = _blueprintGenerator.Generate(seed);
-        var sector = _structureAssembler.Assemble(blueprint, library);
+        var blueprint = StructureBlueprintGenerator.Generate(seed);
+        var sector = StructureAssembler.Assemble(blueprint, library);
         _world = new World.World(_gameplayConfig, sector)
         {
             IgnoreCollision = context.DebugSettings.IgnoreCollisions
         };
+        _queuedInteract = false;
+        _queuedUseMedkit = false;
         _camera.SnapTo(_world.Player.Transform.Position);
     }
 

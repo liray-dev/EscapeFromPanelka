@@ -15,8 +15,11 @@ public sealed class World
     private readonly Dictionary<string, CollisionBox2D> _passageColliders = new(StringComparer.OrdinalIgnoreCase);
     private readonly WorldRenderable _powerSwitchMarker;
     private readonly List<CollisionBox2D> _solidColliders = [];
+    private float _contactDamageCooldownSeconds;
+    private string? _interactionLootId;
     private string? _interactionPassageId;
     private InteractionTarget _interactionTarget;
+    private float _playerVisibilityBoost;
     private float _timeRemainingSeconds;
 
     public World(GameplayConfig config, ProceduralSector sector)
@@ -28,6 +31,8 @@ public sealed class World
         ObjectivePoint = sector.ObjectivePoint;
         ExtractionPoint = sector.ExtractionConsolePoint;
         _timeRemainingSeconds = config.RaidDurationSeconds;
+        PlayerHealth = config.PlayerMaxHealth;
+        MedkitCount = Math.Max(0, config.StartingMedkits);
 
         var halfExtents = Vector3.Max(Vector3.Abs(sector.BoundsMin), Vector3.Abs(sector.BoundsMax));
         var foundationSize = MathF.Max(halfExtents.X, halfExtents.Z) * 2f + 6f;
@@ -68,6 +73,7 @@ public sealed class World
             new Vector4(0.84f, 0.71f, 0.22f, 1f));
 
         BuildSolidColliders();
+        UpdatePlayerEnvironment(0f, Vector2.Zero, false);
         UpdateInteractionState();
     }
 
@@ -78,6 +84,7 @@ public sealed class World
     public IReadOnlyList<WorldRenderable> FeatureGeometry => Sector.FeatureGeometry;
     public IReadOnlyList<WorldLight> Lights => Sector.Lights;
     public IReadOnlyList<HostileEntity> Hostiles => Sector.Hostiles;
+    public IEnumerable<LootPickup> ActiveLootPickups => Sector.Loot.Where(x => !x.Collected);
 
     public IReadOnlyList<WorldRenderable> ActiveCriticalMutationGeometry =>
         CriticalMutationActive ? Sector.CriticalMutationGeometry : [];
@@ -93,6 +100,13 @@ public sealed class World
     public int LightCount => Sector.Lights.Count;
     public int ActiveInfectedZoneCount => Sector.InfectedZones.Count(IsInfectedZoneActive);
     public int AlertedHostileCount => Sector.Hostiles.Count(x => x.Alerted);
+    public int HuntingHostileCount => Sector.Hostiles.Count(x => x.AwarenessState == HostileAwarenessState.Hunt);
+    public int SearchingHostileCount => Sector.Hostiles.Count(x => x.AwarenessState == HostileAwarenessState.Search);
+    public int CargoCount => Sector.Loot.Count(x => x.Collected && x.Value > 0) + (ObjectiveRecovered ? 1 : 0);
+
+    public int CargoValue => Sector.Loot.Where(x => x.Collected).Sum(x => x.Value) +
+                             (ObjectiveRecovered ? _config.ObjectiveLootValue : 0);
+
     public Vector3 PowerSwitchPoint { get; }
     public Vector3 ObjectivePoint { get; }
     public Vector3 ExtractionPoint { get; }
@@ -105,6 +119,16 @@ public sealed class World
     public float PlayerMoveScale { get; private set; } = 1f;
     public float ElapsedRaidSeconds { get; private set; }
     public float RoomSizeMultiplier => Sector.RoomSizeMultiplier;
+    public float PlayerHealth { get; private set; }
+
+    public float PlayerHealthNormalized =>
+        _config.PlayerMaxHealth <= 0.01f ? 0f : PlayerHealth / _config.PlayerMaxHealth;
+
+    public int MedkitCount { get; private set; }
+    public float PlayerNoiseLevel { get; private set; }
+    public float PlayerVisibilityLevel { get; private set; }
+    public bool QuietMovementActive { get; private set; }
+    public bool CanUseMedkit => !IsRaidResolved && MedkitCount > 0 && PlayerHealth < _config.PlayerMaxHealth - 0.5f;
 
     public float TimeRemainingSeconds => MathF.Max(0f, _timeRemainingSeconds);
     public bool CanInteract { get; private set; }
@@ -149,8 +173,15 @@ public sealed class World
     public WorldRenderable? ObjectiveMarker => Phase == RaidPhase.ReachObjective ? _objectiveMarker : null;
     public WorldRenderable? ExtractionMarker => Phase == RaidPhase.ReturnToSafeBlock ? _extractionMarker : null;
 
-    public void Tick(float deltaTime, Vector2 movementInput, bool interactPressed, bool allowCriticalMutation)
+    public void Tick(float deltaTime, Vector2 movementInput, bool interactPressed, bool allowCriticalMutation,
+        bool quietMovement, bool useMedkit)
     {
+        QuietMovementActive = quietMovement;
+        if (_contactDamageCooldownSeconds > 0f)
+            _contactDamageCooldownSeconds = MathF.Max(0f, _contactDamageCooldownSeconds - deltaTime);
+
+        if (useMedkit) TryUseMedkit();
+
         if (!IsRaidResolved)
         {
             ElapsedRaidSeconds += deltaTime;
@@ -166,27 +197,25 @@ public sealed class World
         if (!CriticalMutationActive && allowCriticalMutation && !IsRaidResolved &&
             PressureLevel == RaidPressureLevel.Critical) ApplyCriticalMutation();
 
-        MovePlayer(movementInput, deltaTime);
+        if (IsRaidResolved)
+        {
+            UpdatePlayerEnvironment(0f, Vector2.Zero, quietMovement);
+            UpdateInteractionState();
+            return;
+        }
+
+        MovePlayer(movementInput, deltaTime, quietMovement);
+        UpdatePlayerEnvironment(deltaTime, movementInput, quietMovement);
         UpdateHostiles(deltaTime);
         UpdateInteractionState();
 
         if (interactPressed) TryInteract();
     }
 
-    private void MovePlayer(Vector2 movementInput, float deltaTime)
+    private void MovePlayer(Vector2 movementInput, float deltaTime, bool quietMovement)
     {
-        PlayerInsideInfectedZone = false;
-        PlayerMoveScale = 1f;
-
-        foreach (var zone in Sector.InfectedZones)
-        {
-            if (!IsInfectedZoneActive(zone) || !zone.Contains(Player.Transform.Position)) continue;
-
-            PlayerInsideInfectedZone = true;
-            PlayerMoveScale = MathF.Min(PlayerMoveScale, zone.MoveMultiplier);
-        }
-
-        var delta = Player.CreateMoveDelta(movementInput, deltaTime * PlayerMoveScale);
+        var movementScale = quietMovement ? _config.QuietWalkMultiplier : 1f;
+        var delta = Player.CreateMoveDelta(movementInput, deltaTime * movementScale * PlayerMoveScale);
         if (delta.LengthSquared() <= float.Epsilon) return;
 
         var current = Player.Transform.Position;
@@ -203,24 +232,107 @@ public sealed class World
         Player.SetPosition(current);
     }
 
+    private void UpdatePlayerEnvironment(float deltaTime, Vector2 movementInput, bool quietMovement)
+    {
+        PlayerInsideInfectedZone = false;
+        PlayerMoveScale = 1f;
+        _playerVisibilityBoost = 0f;
+        var infectedDamagePerSecond = 0f;
+
+        foreach (var zone in Sector.InfectedZones)
+        {
+            if (!IsInfectedZoneActive(zone) || !zone.Contains(Player.Transform.Position)) continue;
+
+            PlayerInsideInfectedZone = true;
+            PlayerMoveScale = MathF.Min(PlayerMoveScale, zone.MoveMultiplier);
+            infectedDamagePerSecond += zone.DamagePerSecond;
+            _playerVisibilityBoost = MathF.Max(_playerVisibilityBoost, zone.VisibilityBoost);
+        }
+
+        if (!IsRaidResolved && infectedDamagePerSecond > 0.01f)
+            DamagePlayer(infectedDamagePerSecond * _config.InfectedDamageMultiplier * deltaTime,
+                "Самосбор прожигает защиту");
+
+        var movementAmount = Math.Clamp(movementInput.Length(), 0f, 1f);
+        var targetNoise = movementAmount <= 0.01f ? 0.02f :
+            quietMovement ? 0.18f + movementAmount * 0.18f : 0.34f + movementAmount * 0.54f;
+        if (PlayerInsideInfectedZone) targetNoise += 0.14f;
+        if (CanInteract) targetNoise += 0.02f;
+        PlayerNoiseLevel = Damp(PlayerNoiseLevel, Math.Clamp(targetNoise, 0f, 1f), deltaTime, _config.NoiseDecayRate);
+        PlayerVisibilityLevel = ComputeLightExposure(Player.Transform.Position);
+    }
+
     private void UpdateHostiles(float deltaTime)
     {
         if (Phase is RaidPhase.Extracted or RaidPhase.Failed) return;
 
         foreach (var hostile in Sector.Hostiles)
         {
-            hostile.Tick(deltaTime, Player.Transform.Position, PressureLevel, PlayerInsideInfectedZone, Collides);
+            hostile.Tick(deltaTime, Player.Transform.Position, PlayerNoiseLevel, PlayerVisibilityLevel, PressureLevel,
+                PlayerInsideInfectedZone, Collides, HasLineOfSight);
+
+            if (!hostile.CanStrike || _contactDamageCooldownSeconds > 0f) continue;
+
             var playerXZ = new Vector2(Player.Transform.Position.X, Player.Transform.Position.Z);
             var hostileXZ = new Vector2(hostile.Transform.Position.X, hostile.Transform.Position.Z);
             var hitRadius = hostile.CollisionRadius + Player.CollisionRadius + 0.08f;
 
-            if (Vector2.DistanceSquared(playerXZ, hostileXZ) <= hitRadius * hitRadius)
-            {
-                Phase = RaidPhase.Failed;
-                ContextHint = $"{hostile.Label} настиг тебя в секторе";
-                break;
-            }
+            if (Vector2.DistanceSquared(playerXZ, hostileXZ) > hitRadius * hitRadius) continue;
+
+            DamagePlayer(_config.HostileContactDamage, $"{hostile.Label} рвёт дистанцию");
+            _contactDamageCooldownSeconds = _config.HostileContactCooldownSeconds;
+            EmitNoise(1f);
+            if (Phase == RaidPhase.Failed) break;
         }
+    }
+
+    private float ComputeLightExposure(Vector3 worldPosition)
+    {
+        var exposure = 0.08f;
+        foreach (var light in Sector.Lights)
+        {
+            var pressureFactor = PressureLevel switch
+            {
+                RaidPressureLevel.Stable => 1.00f,
+                RaidPressureLevel.Pressure => light.Emergency ? 0.90f : 0.96f,
+                RaidPressureLevel.Critical => light.Emergency ? 0.72f : 0.84f,
+                _ => 1.00f
+            };
+
+            var delta = new Vector2(worldPosition.X - light.Position.X, worldPosition.Z - light.Position.Z);
+            var distance = delta.Length();
+            if (distance >= light.Radius) continue;
+
+            var distanceFactor = 1f - distance / light.Radius;
+            exposure += distanceFactor * light.Intensity * pressureFactor * 0.22f;
+        }
+
+        exposure += _playerVisibilityBoost;
+        if (ObjectiveRecovered) exposure += 0.06f;
+        return Math.Clamp(exposure, 0.04f, 1f);
+    }
+
+    private bool HasLineOfSight(Vector3 from, Vector3 to)
+    {
+        if (IgnoreCollision) return true;
+
+        var start = new Vector2(from.X, from.Z);
+        var end = new Vector2(to.X, to.Z);
+
+        foreach (var collider in _solidColliders)
+            if (collider.SegmentIntersects(start, end))
+                return false;
+
+        foreach (var passage in Sector.LockablePassages.Where(x => x.BlocksPassage))
+            if (_passageColliders.TryGetValue(passage.Id, out var collider) && collider.SegmentIntersects(start, end))
+                return false;
+
+        if (CriticalMutationActive)
+            foreach (var collider in _criticalMutationColliders)
+                if (collider.SegmentIntersects(start, end))
+                    return false;
+
+        return true;
     }
 
     private bool Collides(Vector3 worldPosition, float radius)
@@ -301,6 +413,7 @@ public sealed class World
         InteractionPrompt = string.Empty;
         _interactionTarget = InteractionTarget.None;
         _interactionPassageId = null;
+        _interactionLootId = null;
 
         if (IsRaidResolved)
         {
@@ -334,6 +447,17 @@ public sealed class World
             CanInteract = true;
             InteractionPrompt = "E — закрыть герму и завершить рейд";
             _interactionTarget = InteractionTarget.Extraction;
+            return;
+        }
+
+        foreach (var pickup in Sector.Loot.Where(x => !x.Collected))
+        {
+            if (!IsWithinInteractRange(pickup.Position)) continue;
+
+            CanInteract = true;
+            InteractionPrompt = $"E — подобрать {pickup.Label.ToLowerInvariant()}";
+            _interactionTarget = InteractionTarget.Loot;
+            _interactionLootId = pickup.Id;
             return;
         }
 
@@ -376,7 +500,14 @@ public sealed class World
                 new Vector2(Player.Transform.Position.X, Player.Transform.Position.Z)))
             .FirstOrDefault();
 
-        if (nearestAlert is not null) ContextHint = $"{nearestAlert.Label} вышел на звук шагов";
+        if (nearestAlert is not null)
+            ContextHint = nearestAlert.AwarenessState switch
+            {
+                HostileAwarenessState.Hunt => $"{nearestAlert.Label} идёт по следу",
+                HostileAwarenessState.Suspicious => $"{nearestAlert.Label} услышал движение",
+                HostileAwarenessState.Search => $"{nearestAlert.Label} шарит по коридору",
+                _ => ContextHint
+            };
     }
 
     private void TryInteract()
@@ -387,24 +518,81 @@ public sealed class World
         {
             case InteractionTarget.PowerSwitch:
                 foreach (var passage in Sector.LockablePassages.Where(x =>
-                             x.UnlockId.Equals("service_power", StringComparison.OrdinalIgnoreCase))) passage.Unlock();
+                             x.UnlockId.Equals("service_power", StringComparison.OrdinalIgnoreCase)))
+                    passage.Unlock();
                 Phase = RaidPhase.ReachObjective;
+                ContextHint = "Питание вернулось. Переборка к архиву разблокирована";
+                EmitNoise(0.60f);
                 break;
             case InteractionTarget.Objective:
                 Phase = RaidPhase.ReturnToSafeBlock;
+                ContextHint = "Журналы в сумке. Теперь назад к герме";
+                EmitNoise(0.38f);
                 break;
             case InteractionTarget.Extraction:
                 Phase = RaidPhase.Extracted;
+                ContextHint = "Герма закрылась. Рейд пережит";
                 break;
             case InteractionTarget.Passage:
                 if (_interactionPassageId is not null)
+                {
                     Sector.LockablePassages
                         .FirstOrDefault(x => x.Id.Equals(_interactionPassageId, StringComparison.OrdinalIgnoreCase))
                         ?.Open();
+                    ContextHint = "Тяжёлая дверь ушла в сторону";
+                    EmitNoise(0.66f);
+                }
+
+                break;
+            case InteractionTarget.Loot:
+                if (_interactionLootId is not null)
+                {
+                    var pickup = Sector.Loot.FirstOrDefault(x =>
+                        x.Id.Equals(_interactionLootId, StringComparison.OrdinalIgnoreCase));
+                    if (pickup is not null && !pickup.Collected)
+                    {
+                        pickup.Collect();
+                        if (pickup.MedkitCount > 0)
+                        {
+                            MedkitCount += pickup.MedkitCount;
+                            ContextHint = $"В сумку ушло: {pickup.Label.ToLowerInvariant()}";
+                        }
+                        else
+                        {
+                            ContextHint = $"Подобрано: {pickup.Label.ToLowerInvariant()}";
+                        }
+
+                        EmitNoise(0.48f);
+                    }
+                }
+
                 break;
         }
 
         UpdateInteractionState();
+    }
+
+    private void TryUseMedkit()
+    {
+        if (!CanUseMedkit) return;
+
+        MedkitCount--;
+        PlayerHealth = MathF.Min(_config.PlayerMaxHealth, PlayerHealth + _config.MedkitHealAmount);
+        ContextHint = "Аптечка стабилизировала состояние";
+        PlayerNoiseLevel = MathF.Max(PlayerNoiseLevel, 0.10f);
+    }
+
+    private void DamagePlayer(float amount, string hint)
+    {
+        if (amount <= 0.01f || IsRaidResolved) return;
+
+        PlayerHealth = MathF.Max(0f, PlayerHealth - amount);
+        ContextHint = hint;
+        if (PlayerHealth <= 0f)
+        {
+            Phase = RaidPhase.Failed;
+            ContextHint = "Игрок не пережил рейд";
+        }
     }
 
     private void ApplyCriticalMutation()
@@ -427,12 +615,25 @@ public sealed class World
                (CriticalMutationActive && zone.ActivationLevel == RaidPressureLevel.Critical);
     }
 
+    private void EmitNoise(float amount)
+    {
+        PlayerNoiseLevel = MathF.Max(PlayerNoiseLevel, Math.Clamp(amount, 0f, 1f));
+    }
+
+    private static float Damp(float current, float target, float deltaTime, float response)
+    {
+        if (deltaTime <= 0f) return target;
+        var alpha = 1f - MathF.Exp(-MathF.Max(0.01f, response) * deltaTime);
+        return current + (target - current) * alpha;
+    }
+
     private enum InteractionTarget
     {
         None,
         PowerSwitch,
         Objective,
         Extraction,
-        Passage
+        Passage,
+        Loot
     }
 }

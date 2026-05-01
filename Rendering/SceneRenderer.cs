@@ -58,7 +58,7 @@ public sealed class SceneRenderer(GL gl, GameResources resources) : IDisposable
     {
         if (_shader is null || _planeMesh is null || _cubeMesh is null || _gridMesh is null) return;
 
-        var environment = BuildEnvironment(world, camera, debugSettings);
+        var environment = BuildEnvironment(world, debugSettings);
         gl.ClearColor(environment.ClearColor.X, environment.ClearColor.Y, environment.ClearColor.Z,
             environment.ClearColor.W);
         gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
@@ -83,6 +83,7 @@ public sealed class SceneRenderer(GL gl, GameResources resources) : IDisposable
         foreach (var mutation in world.ActiveCriticalMutationGeometry) RenderRenderable(mutation, camera);
         foreach (var passage in world.ActiveLockablePassages) RenderRenderable(passage.Renderable, camera);
         foreach (var prop in world.Props) RenderRenderable(prop.Renderable, camera);
+        foreach (var pickup in world.ActiveLootPickups) RenderRenderable(pickup.Renderable, camera);
 
         foreach (var hostile in world.Hostiles)
             RenderMesh(_cubeMesh, hostile.Transform.CreateModelMatrix(), camera, hostile.Tint);
@@ -95,7 +96,8 @@ public sealed class SceneRenderer(GL gl, GameResources resources) : IDisposable
         {
             RaidPhase.Failed => new Vector4(0.62f, 0.32f, 0.36f, 1f),
             RaidPhase.Extracted => new Vector4(0.82f, 0.84f, 0.58f, 1f),
-            _ => new Vector4(0.76f, 0.82f, 0.90f, 1f)
+            _ => Vector4.Lerp(new Vector4(0.52f, 0.62f, 0.76f, 1f), new Vector4(0.92f, 0.92f, 0.92f, 1f),
+                world.PlayerVisibilityLevel)
         };
 
         RenderMesh(_cubeMesh, world.Player.Transform.CreateModelMatrix(), camera, playerTint);
@@ -164,8 +166,7 @@ public sealed class SceneRenderer(GL gl, GameResources resources) : IDisposable
         }
     }
 
-    private static SceneEnvironment BuildEnvironment(WorldModel world, TopDownCamera camera,
-        DebugSettings debugSettings)
+    private static SceneEnvironment BuildEnvironment(WorldModel world, DebugSettings debugSettings)
     {
         var lightFactor = world.PressureLevel switch
         {

@@ -2,16 +2,9 @@ using EFP.World;
 
 namespace EFP.WorldGen;
 
-public sealed class PropInstance
+public sealed class PropInstance(string propId, string sourceModuleNodeId, WorldRenderable renderable)
 {
-    public PropInstance(string propId, string sourceModuleNodeId, WorldRenderable renderable)
-    {
-        PropId = propId;
-        SourceModuleNodeId = sourceModuleNodeId;
-        Renderable = renderable;
-    }
-
-    public string PropId { get; }
-    public string SourceModuleNodeId { get; }
-    public WorldRenderable Renderable { get; }
+    public string PropId { get; } = propId;
+    public string SourceModuleNodeId { get; } = sourceModuleNodeId;
+    public WorldRenderable Renderable { get; } = renderable;
 }

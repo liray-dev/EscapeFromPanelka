@@ -32,6 +32,15 @@ public sealed class GameplayConfig
     public float RaidDurationSeconds { get; set; } = 165.0f;
     public float PressureThresholdSeconds { get; set; } = 90.0f;
     public float CriticalThresholdSeconds { get; set; } = 42.0f;
+    public float PlayerMaxHealth { get; set; } = 100.0f;
+    public int StartingMedkits { get; set; } = 0;
+    public float MedkitHealAmount { get; set; } = 35.0f;
+    public float QuietWalkMultiplier { get; set; } = 0.46f;
+    public float NoiseDecayRate { get; set; } = 4.4f;
+    public float HostileContactDamage { get; set; } = 18.0f;
+    public float HostileContactCooldownSeconds { get; set; } = 0.70f;
+    public float InfectedDamageMultiplier { get; set; } = 1.0f;
+    public int ObjectiveLootValue { get; set; } = 120;
 }
 
 public sealed class CameraConfig

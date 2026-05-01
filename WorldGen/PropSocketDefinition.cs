@@ -2,12 +2,12 @@ namespace EFP.WorldGen;
 
 public sealed class PropSocketDefinition
 {
-    public string Id { get; set; } = string.Empty;
-    public string SlotType { get; set; } = string.Empty;
-    public float LocalX { get; set; }
-    public float LocalY { get; set; }
-    public float LocalZ { get; set; }
-    public float RotationDegrees { get; set; }
-    public float SpawnChance { get; set; } = 1f;
-    public List<string> AllowedProps { get; set; } = [];
+    public string Id { get; init; } = string.Empty;
+    public string SlotType { get; init; } = string.Empty;
+    public float LocalX { get; init; }
+    public float LocalY { get; init; }
+    public float LocalZ { get; init; }
+    public float RotationDegrees { get; init; }
+    public float SpawnChance { get; init; } = 1f;
+    public List<string> AllowedProps { get; init; } = [];
 }

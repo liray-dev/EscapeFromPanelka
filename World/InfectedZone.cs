@@ -2,27 +2,26 @@ using System.Numerics;
 
 namespace EFP.World;
 
-public sealed class InfectedZone
+public sealed class InfectedZone(
+    string id,
+    string label,
+    Vector3 center,
+    float radius,
+    RaidPressureLevel activationLevel,
+    float moveMultiplier,
+    float damagePerSecond,
+    float visibilityBoost,
+    WorldRenderable renderable)
 {
-    public InfectedZone(string id, string label, Vector3 center, float radius, RaidPressureLevel activationLevel,
-        float moveMultiplier, WorldRenderable renderable)
-    {
-        Id = id;
-        Label = label;
-        Center = center;
-        Radius = radius;
-        ActivationLevel = activationLevel;
-        MoveMultiplier = moveMultiplier;
-        Renderable = renderable;
-    }
-
-    public string Id { get; }
-    public string Label { get; }
-    public Vector3 Center { get; }
-    public float Radius { get; }
-    public RaidPressureLevel ActivationLevel { get; }
-    public float MoveMultiplier { get; }
-    public WorldRenderable Renderable { get; }
+    public string Id { get; } = id;
+    public string Label { get; } = label;
+    public Vector3 Center { get; } = center;
+    public float Radius { get; } = radius;
+    public RaidPressureLevel ActivationLevel { get; } = activationLevel;
+    public float MoveMultiplier { get; } = moveMultiplier;
+    public float DamagePerSecond { get; } = damagePerSecond;
+    public float VisibilityBoost { get; } = visibilityBoost;
+    public WorldRenderable Renderable { get; } = renderable;
 
     public bool IsActive(RaidPressureLevel level)
     {
