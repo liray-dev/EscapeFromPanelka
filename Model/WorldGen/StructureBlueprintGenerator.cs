@@ -4,83 +4,29 @@ namespace EFP.Model.WorldGen;
 
 public sealed class StructureBlueprintGenerator
 {
-    private const int MaxAttemptsPerSocket = 48;
-    private const float OverlapEpsilon = 0.06f;
-    private const int MaxBlueprintAttempts = 18;
+    private const int MaxAttemptsPerSocket = 6;
+    private const int SocketRetryBudget = 3;
+    private const int MaxBlueprintAttempts = 24;
 
     public static StructureBlueprint Generate(int seed, ModuleLibrary library, int minModules, int maxModules)
     {
-        return GenerateWithState(seed, library, minModules, maxModules).Blueprint;
-    }
-
-    public static SectorBuildState GenerateWithState(int seed, ModuleLibrary library, int minModules, int maxModules)
-    {
         var clampedMin = Math.Max(2, minModules);
         var best = GenerateOnce(seed, library, clampedMin, maxModules);
-        if (IsValid(best.Blueprint, library, clampedMin)) return best;
+        if (Validate(best.Blueprint, library, clampedMin)) return best.Blueprint;
 
         for (var attempt = 1; attempt < MaxBlueprintAttempts; attempt++)
         {
             var candidateSeed = unchecked(seed + attempt * 7919);
             var candidate = GenerateOnce(candidateSeed, library, clampedMin, maxModules);
-            if (candidate.Blueprint.Steps.Count > best.Blueprint.Steps.Count) best = candidate;
-            if (IsValid(candidate.Blueprint, library, clampedMin))
-            {
-                candidate.Blueprint.Seed = seed;
-                return candidate;
-            }
+            if (!Validate(candidate.Blueprint, library, clampedMin)) continue;
+
+            candidate.Blueprint.Seed = seed;
+            return candidate.Blueprint;
         }
 
         var fallback = GenerateFallback(seed, library, clampedMin);
-        best.Blueprint.Seed = seed;
-        return IsValid(fallback.Blueprint, library, clampedMin) ? fallback : best;
-    }
-
-    public static List<BlueprintStep> Grow(SectorBuildState state, ModuleLibrary library, Random rng,
-        Vector3 anchorPosition, float maxAnchorDistance, int budget)
-    {
-        var added = new List<BlueprintStep>();
-        if (state.OpenSockets.Count == 0 || budget <= 0) return added;
-
-        var anchorXZ = new Vector2(anchorPosition.X, anchorPosition.Z);
-        var candidates = state.OpenSockets
-            .Select(socket =>
-            {
-                var worldPosition = ResolveSocketWorldPosition(state.PlacedByNodeId, socket);
-                var distance = Vector2.Distance(anchorXZ, new Vector2(worldPosition.X, worldPosition.Z));
-                return (Socket: socket, Distance: distance);
-            })
-            .Where(x => x.Distance <= maxAnchorDistance)
-            .OrderBy(x => x.Distance)
-            .Take(budget * 3)
-            .ToList();
-
-        if (candidates.Count == 0) return added;
-
-        var growthPool = library.AllModules
-            .Where(m => !IsArchetype(m, "objective") && !IsArchetype(m, "safe") && m.Connections.Count > 0)
-            .ToList();
-        if (growthPool.Count == 0) return added;
-
-        foreach (var (socket, _) in candidates)
-        {
-            if (added.Count >= budget) break;
-            if (!state.OpenSockets.Remove(socket)) continue;
-
-            if (!TryAttach(socket, growthPool, state.PlacedByNodeId, rng, out var step, out var placement)) continue;
-
-            var nodeId = $"module_{state.NextNodeIndex++}";
-            step!.NodeId = nodeId;
-            state.Blueprint.Steps.Add(step);
-            state.PlacedByNodeId[nodeId] = placement;
-            added.Add(step);
-
-            foreach (var connection in placement.Definition.Connections)
-                if (!connection.Id.Equals(step.ChildSocketId, StringComparison.OrdinalIgnoreCase))
-                    state.OpenSockets.Add(new OpenSocket(nodeId, connection.Id));
-        }
-
-        return added;
+        fallback.Blueprint.Seed = seed;
+        return Validate(fallback.Blueprint, library, clampedMin) ? fallback.Blueprint : best.Blueprint;
     }
 
     private static SectorBuildState GenerateOnce(int seed, ModuleLibrary library, int minModules, int maxModules)
@@ -115,8 +61,10 @@ public sealed class StructureBlueprintGenerator
         var hasService = IsArchetype(rootDef, "service");
         var hasObjective = IsArchetype(rootDef, "objective");
         state.NextNodeIndex = 1;
+
+        var attemptsBySocket = new Dictionary<OpenSocket, int>();
         var iterations = 0;
-        var safetyLimit = Math.Max(600, targetCount * 96);
+        var safetyLimit = Math.Max(800, targetCount * 64);
 
         while (state.PlacedByNodeId.Count < targetCount && state.OpenSockets.Count > 0 && iterations++ < safetyLimit)
         {
@@ -145,6 +93,16 @@ public sealed class StructureBlueprintGenerator
 
                 if (IsArchetype(placement.Definition, "service")) hasService = true;
                 if (IsArchetype(placement.Definition, "objective")) hasObjective = true;
+                attemptsBySocket.Remove(open);
+            }
+            else
+            {
+                var tries = attemptsBySocket.TryGetValue(open, out var current) ? current + 1 : 1;
+                if (tries < SocketRetryBudget)
+                {
+                    attemptsBySocket[open] = tries;
+                    state.OpenSockets.Add(open);
+                }
             }
         }
 
@@ -219,8 +177,7 @@ public sealed class StructureBlueprintGenerator
         var parentSocketWorldPosition = parent.Position + RotateLocal(parentSocketLocal, parent.RotationDegrees);
         var desiredChildDirection = WorldGenMath.Opposite(parentSocketWorldDirection);
 
-        var attempts = Math.Min(MaxAttemptsPerSocket, candidatePool.Count * 4 + 4);
-        for (var attempt = 0; attempt < attempts; attempt++)
+        for (var attempt = 0; attempt < MaxAttemptsPerSocket; attempt++)
         {
             var candidate = PickWeighted(candidatePool, rng);
             if (candidate.Connections.Count == 0) continue;
@@ -235,7 +192,7 @@ public sealed class StructureBlueprintGenerator
                     WorldGenMath.GetSocketLocalPosition(candidate, childSocket), rotation);
                 var childPosition = parentSocketWorldPosition - rotatedChildLocal;
 
-                if (Overlaps(candidate, childPosition, rotation, placed, parent)) continue;
+                if (Overlaps(candidate, childPosition, rotation, placed)) continue;
 
                 placement = new Placement(candidate, childPosition, rotation);
                 step = new BlueprintStep
@@ -253,36 +210,22 @@ public sealed class StructureBlueprintGenerator
         return false;
     }
 
-    private static Vector3 ResolveSocketWorldPosition(Dictionary<string, Placement> placed, OpenSocket socket)
-    {
-        if (!placed.TryGetValue(socket.NodeId, out var parent)) return Vector3.Zero;
-        var connection = parent.Definition.Connections
-            .FirstOrDefault(c => c.Id.Equals(socket.SocketId, StringComparison.OrdinalIgnoreCase));
-        if (connection is null) return parent.Position;
-
-        var local = WorldGenMath.GetSocketLocalPosition(parent.Definition, connection);
-        return parent.Position + RotateLocal(local, parent.RotationDegrees);
-    }
-
     private static bool Overlaps(ModuleDefinition definition, Vector3 position, float rotationDegrees,
-        Dictionary<string, Placement> placed, Placement excludeParent)
+        Dictionary<string, Placement> placed)
     {
         var halfA = GetPlanarHalfExtents(definition, rotationDegrees);
-        var minA = new Vector2(position.X - halfA.X + OverlapEpsilon, position.Z - halfA.Y + OverlapEpsilon);
-        var maxA = new Vector2(position.X + halfA.X - OverlapEpsilon, position.Z + halfA.Y - OverlapEpsilon);
+        var minA = new Vector2(position.X - halfA.X, position.Z - halfA.Y);
+        var maxA = new Vector2(position.X + halfA.X, position.Z + halfA.Y);
 
         foreach (var other in placed.Values)
         {
-            if (ReferenceEquals(other.Definition, excludeParent.Definition)
-                && other.Position == excludeParent.Position
-                && other.RotationDegrees == excludeParent.RotationDegrees) continue;
-
             var halfB = GetPlanarHalfExtents(other.Definition, other.RotationDegrees);
             var minB = new Vector2(other.Position.X - halfB.X, other.Position.Z - halfB.Y);
             var maxB = new Vector2(other.Position.X + halfB.X, other.Position.Z + halfB.Y);
 
-            if (maxA.X < minB.X || minA.X > maxB.X) continue;
-            if (maxA.Y < minB.Y || minA.Y > maxB.Y) continue;
+            const float Tolerance = 0.01f;
+            if (maxA.X <= minB.X + Tolerance || minA.X >= maxB.X - Tolerance) continue;
+            if (maxA.Y <= minB.Y + Tolerance || minA.Y >= maxB.Y - Tolerance) continue;
             return true;
         }
 
@@ -333,29 +276,28 @@ public sealed class StructureBlueprintGenerator
         return module.Archetype.Equals(archetype, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsValid(StructureBlueprint blueprint, ModuleLibrary library, int minModules)
+    private static bool Validate(StructureBlueprint blueprint, ModuleLibrary library, int minModules)
     {
         if (blueprint.Steps.Count < minModules) return false;
 
         var nodeIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var hasSafe = false;
-        var hasService = false;
-        var hasObjective = false;
         var childrenByParent = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         string? rootNodeId = null;
+        string? serviceNodeId = null;
+        string? objectiveNodeId = null;
 
         foreach (var step in blueprint.Steps)
         {
             if (string.IsNullOrWhiteSpace(step.NodeId) || !nodeIds.Add(step.NodeId)) return false;
 
             var module = library.GetModule(step.ModuleId);
-            hasSafe |= IsArchetype(module, "safe");
-            hasService |= IsArchetype(module, "service");
-            hasObjective |= IsArchetype(module, "objective");
+            if (IsArchetype(module, "service") && serviceNodeId is null) serviceNodeId = step.NodeId;
+            if (IsArchetype(module, "objective") && objectiveNodeId is null) objectiveNodeId = step.NodeId;
 
             if (string.IsNullOrWhiteSpace(step.ParentNodeId))
             {
                 if (rootNodeId is not null) return false;
+                if (!IsArchetype(module, "safe")) return false;
                 rootNodeId = step.NodeId;
             }
             else
@@ -371,11 +313,14 @@ public sealed class StructureBlueprintGenerator
             }
         }
 
-        return rootNodeId is not null
-               && hasSafe
-               && hasService
-               && hasObjective
-               && CountReachableNodes(rootNodeId, childrenByParent) == blueprint.Steps.Count;
+        if (rootNodeId is null || serviceNodeId is null || objectiveNodeId is null) return false;
+
+        var reachable = ReachableNodes(rootNodeId, childrenByParent);
+        if (reachable.Count != blueprint.Steps.Count) return false;
+        if (!reachable.Contains(serviceNodeId)) return false;
+        if (!reachable.Contains(objectiveNodeId)) return false;
+
+        return true;
     }
 
     private static SectorBuildState GenerateFallback(int seed, ModuleLibrary library, int minModules)
@@ -459,7 +404,7 @@ public sealed class StructureBlueprintGenerator
             IsArchetype(m, archetype) && m.Connections.Any(x => x.Direction == socket));
     }
 
-    private static int CountReachableNodes(string rootNodeId, Dictionary<string, List<string>> childrenByParent)
+    private static HashSet<string> ReachableNodes(string rootNodeId, Dictionary<string, List<string>> childrenByParent)
     {
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var queue = new Queue<string>();
@@ -475,6 +420,6 @@ public sealed class StructureBlueprintGenerator
                 queue.Enqueue(child);
         }
 
-        return visited.Count;
+        return visited;
     }
 }

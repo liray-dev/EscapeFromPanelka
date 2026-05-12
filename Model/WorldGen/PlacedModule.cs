@@ -19,6 +19,17 @@ public sealed class PlacedModule
     public Vector3 Position { get; }
     public float RotationDegrees { get; }
     public bool MainRoute { get; }
+    public bool Visible { get; set; }
+    public bool Discovered { get; set; }
+
+    public bool ContainsPlanar(Vector3 worldPosition)
+    {
+        var local = Vector3.Transform(worldPosition - Position,
+            Quaternion.CreateFromAxisAngle(Vector3.UnitY, -MathF.PI / 180f * RotationDegrees));
+        var halfX = Definition.Width * 0.5f;
+        var halfZ = Definition.Length * 0.5f;
+        return MathF.Abs(local.X) <= halfX && MathF.Abs(local.Z) <= halfZ;
+    }
 
     public ConnectionSocketDefinition GetSocket(string socketId)
     {

@@ -144,10 +144,9 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
         _seed = seed;
         var roomSizeMultiplier = Math.Clamp(context.DebugSettings.RoomSizeMultiplier, 0.75f, 1.80f);
         var library = new ModuleLibrary(roomSizeMultiplier);
-        var state = StructureBlueprintGenerator.GenerateWithState(seed, library,
+        var blueprint = StructureBlueprintGenerator.Generate(seed, library,
             _settings.MinModulesPerSector, _settings.MaxModulesPerSector);
-        var sector = StructureAssembler.Assemble(state.Blueprint, library);
-        var grower = new SectorGrower(state, library, seed, _settings.ModuleCap);
+        var sector = StructureAssembler.Assemble(blueprint, library);
 
         _tracerView?.Dispose();
         _viewModel?.Dispose();
@@ -155,7 +154,6 @@ public sealed class GameplayState(IGameStateContext context) : IGameState
         {
             IgnoreCollision = context.DebugSettings.IgnoreCollisions
         };
-        _raid.AttachGrower(grower);
         _viewModel = new RaidViewModel(_raid);
         _tracerView = new MeleeTracerView(_raid);
         _camera.SnapTo(_raid.Player.Transform.Position);

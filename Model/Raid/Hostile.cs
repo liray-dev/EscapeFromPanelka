@@ -13,7 +13,8 @@ public sealed class Hostile : Entity
     private float _staggerTimer;
 
     public Hostile(string id, string label, Vector3 anchorPosition, Vector4 dormantTint, Vector4 alertTint,
-        float maxHealth = 60f, float collisionRadius = 0.34f, Vector3? bodyScale = null, string? modelId = null)
+        float maxHealth = 60f, float collisionRadius = 0.34f, Vector3? bodyScale = null, string? modelId = null,
+        string? ownerModuleId = null)
         : base(id, label, anchorPosition)
     {
         AnchorPosition = anchorPosition;
@@ -23,6 +24,7 @@ public sealed class Hostile : Entity
         Health = MaxHealth;
         CollisionRadius = collisionRadius;
         ModelId = modelId;
+        OwnerModuleId = ownerModuleId;
         _anchorPhase = MathF.Abs(id.GetHashCode()) * 0.0137f;
         _patrolAngle = _anchorPhase;
         _searchOrigin = anchorPosition;
@@ -38,6 +40,7 @@ public sealed class Hostile : Entity
     public float Health { get; private set; }
     public bool IsDead => Health <= 0f;
     public string? ModelId { get; }
+    public string? OwnerModuleId { get; }
     public HostileAwarenessState AwarenessState { get; private set; }
 
     public bool Alerted => !IsDead && AwarenessState is HostileAwarenessState.Suspicious or HostileAwarenessState.Hunt

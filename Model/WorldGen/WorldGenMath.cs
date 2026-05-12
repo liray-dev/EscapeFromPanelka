@@ -32,7 +32,7 @@ public static class WorldGenMath
     {
         var quarterTurns = NormalizeQuarterTurns((int)MathF.Round(rotationDegrees / 90f));
         var value = (int)direction;
-        return (ConnectionDirection)((value + quarterTurns) % 4);
+        return (ConnectionDirection)(((value - quarterTurns) % 4 + 4) % 4);
     }
 
     public static float SolveRotationDegrees(ConnectionDirection currentDirection, ConnectionDirection desiredDirection)

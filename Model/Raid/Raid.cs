@@ -22,7 +22,6 @@ public sealed class Raid
     private readonly Dictionary<string, CollisionBox2D> _passageColliders = new(StringComparer.OrdinalIgnoreCase);
     private readonly WorldRenderable _powerSwitchMarker;
     private readonly List<CollisionBox2D> _solidColliders = [];
-    private SectorGrower? _grower;
     private float _contactDamageCooldownSeconds;
     private Container? _activeSearchContainer;
     private string? _interactionContainerId;
@@ -72,6 +71,10 @@ public sealed class Raid
             },
             new Vector4(0.11f, 0.12f, 0.13f, 1f));
 
+        var safeModule = FindModuleByArchetype("safe");
+        var serviceModule = FindModuleByArchetype("service");
+        var objectiveModule = FindModuleByArchetype("objective");
+
         _powerSwitchMarker = new WorldRenderable(
             WorldPrimitiveType.Cube,
             new Transform
@@ -79,7 +82,8 @@ public sealed class Raid
                 Position = PowerSwitchPoint + new Vector3(0f, 0.55f, 0f),
                 Scale = new Vector3(0.42f, 1.1f, 0.42f)
             },
-            new Vector4(0.84f, 0.70f, 0.24f, 1f));
+            new Vector4(0.84f, 0.70f, 0.24f, 1f),
+            ownerModuleId: serviceModule?.NodeId);
 
         _objectiveMarker = new WorldRenderable(
             WorldPrimitiveType.Cube,
@@ -88,7 +92,8 @@ public sealed class Raid
                 Position = ObjectivePoint + new Vector3(0f, 0.55f, 0f),
                 Scale = new Vector3(0.55f, 1.1f, 0.55f)
             },
-            new Vector4(0.16f, 0.72f, 0.64f, 1f));
+            new Vector4(0.16f, 0.72f, 0.64f, 1f),
+            ownerModuleId: objectiveModule?.NodeId);
 
         _extractionMarker = new WorldRenderable(
             WorldPrimitiveType.Cube,
@@ -97,13 +102,101 @@ public sealed class Raid
                 Position = ExtractionPoint + new Vector3(0f, 0.55f, 0f),
                 Scale = new Vector3(0.55f, 1.1f, 0.55f)
             },
-            new Vector4(0.84f, 0.71f, 0.22f, 1f));
+            new Vector4(0.84f, 0.71f, 0.22f, 1f),
+            ownerModuleId: safeModule?.NodeId);
 
         BuildSolidColliders();
         BuildExtractionPoints();
         UpdatePlayerEnvironment(0f, Vector2.Zero, false);
+        UpdateModuleVisibility();
         UpdateInteractionState();
     }
+
+    public ModuleVisibility GetVisibility(string? ownerModuleId)
+    {
+        if (string.IsNullOrEmpty(ownerModuleId)) return ModuleVisibility.Visible;
+        if (!_moduleByNodeId.TryGetValue(ownerModuleId, out var module)) return ModuleVisibility.Visible;
+        if (module.Visible) return ModuleVisibility.Visible;
+        return module.Discovered ? ModuleVisibility.Discovered : ModuleVisibility.Hidden;
+    }
+
+    private void UpdateModuleVisibility()
+    {
+        if (_moduleByNodeId.Count == 0)
+        {
+            foreach (var module in Sector.Modules)
+                _moduleByNodeId[module.NodeId] = module;
+        }
+
+        foreach (var module in Sector.Modules) module.Visible = false;
+
+        var playerPos = Player.Transform.Position;
+        var startModule = FindModuleContaining(playerPos) ?? FindNearestModule(playerPos);
+        if (startModule is null) return;
+
+        var queue = new Queue<PlacedModule>();
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        queue.Enqueue(startModule);
+        visited.Add(startModule.NodeId);
+
+        while (queue.Count > 0)
+        {
+            var module = queue.Dequeue();
+            module.Visible = true;
+            module.Discovered = true;
+
+            if (!Sector.ModuleAdjacency.TryGetValue(module.NodeId, out var neighbors)) continue;
+
+            foreach (var link in neighbors)
+            {
+                if (!visited.Add(link.NeighborNodeId)) continue;
+                if (!IsPassageRevealing(link.PassageId)) continue;
+                if (!_moduleByNodeId.TryGetValue(link.NeighborNodeId, out var neighbor)) continue;
+                queue.Enqueue(neighbor);
+            }
+        }
+    }
+
+    private bool IsPassageRevealing(string passageId)
+    {
+        var passage = Sector.LockablePassages.FirstOrDefault(p =>
+            p.Id.Equals(passageId, StringComparison.OrdinalIgnoreCase));
+        if (passage is null) return true;
+        return passage.State == DoorState.Open;
+    }
+
+    private PlacedModule? FindModuleByArchetype(string archetype)
+    {
+        return Sector.Modules.FirstOrDefault(m =>
+            m.Definition.Archetype.Equals(archetype, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private PlacedModule? FindModuleContaining(Vector3 worldPosition)
+    {
+        foreach (var module in Sector.Modules)
+            if (module.ContainsPlanar(worldPosition))
+                return module;
+        return null;
+    }
+
+    private PlacedModule? FindNearestModule(Vector3 worldPosition)
+    {
+        var xz = new Vector2(worldPosition.X, worldPosition.Z);
+        PlacedModule? best = null;
+        var bestDistance = float.MaxValue;
+        foreach (var module in Sector.Modules)
+        {
+            var moduleXZ = new Vector2(module.Position.X, module.Position.Z);
+            var distance = Vector2.DistanceSquared(xz, moduleXZ);
+            if (distance >= bestDistance) continue;
+            bestDistance = distance;
+            best = module;
+        }
+
+        return best;
+    }
+
+    private readonly Dictionary<string, PlacedModule> _moduleByNodeId = new(StringComparer.OrdinalIgnoreCase);
 
     private readonly List<ExtractionPoint> _extractionPoints = [];
     private string? _interactionExtractionId;
@@ -142,7 +235,8 @@ public sealed class Raid
                     Position = position + new Vector3(0f, 0.20f, 0f),
                     Scale = new Vector3(0.36f, 1.40f, 0.36f)
                 },
-                markerTint);
+                markerTint,
+                ownerModuleId: module.NodeId);
 
             _extractionPoints.Add(new ExtractionPoint($"extract_{i}_{module.NodeId}", label, position, condition, marker));
         }
@@ -312,8 +406,7 @@ public sealed class Raid
 
         MovePlayer(movementInput, deltaTime, quietMovement);
         UpdatePlayerEnvironment(deltaTime, movementInput, quietMovement);
-
-        if (_grower?.TryGrow(Sector, Player.Transform.Position, deltaTime) == true) RebuildColliders();
+        UpdateModuleVisibility();
 
         var attack = Combat.Tick(deltaTime, attackHeld);
         if (attack is { } resolved) ResolveAttack(resolved);
@@ -369,19 +462,6 @@ public sealed class Raid
             ContainerSearchProgress?.Invoke(this,
                 new ContainerSearchProgress(_activeSearchContainer, _activeSearchContainer.NormalizedProgress));
         }
-    }
-
-    public void AttachGrower(SectorGrower grower)
-    {
-        _grower = grower;
-    }
-
-    public void RebuildColliders()
-    {
-        _solidColliders.Clear();
-        _passageColliders.Clear();
-        _criticalMutationColliders.Clear();
-        BuildSolidColliders();
     }
 
     private void ResolveAttack(AttackResult attack)

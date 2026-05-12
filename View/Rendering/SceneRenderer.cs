@@ -74,32 +74,40 @@ public sealed class SceneRenderer(GL gl, GameResources resources, ModelRegistry 
         _shader.SetFloat("uFogNear", environment.FogNear);
         _shader.SetFloat("uFogFar", environment.FogFar);
         _shader.SetVector3("uCameraPosition", camera.Position);
+        _shader.SetVector3("uPlayerPosition", world.Player.Transform.Position);
+        _shader.SetFloat("uWallCutHeight", world.Player.Transform.Position.Y + 1.4f);
+        _shader.SetFloat("uWallCutRadius", 7.5f);
+        _shader.SetFloat("uWallCutSoftness", 0.9f);
         ApplyPointLights(world, environment);
 
-        RenderRenderable(world.Foundation, camera);
+        RenderRenderable(world.Foundation, camera, world);
         RenderMesh(_gridMesh, Matrix4x4.Identity, camera, Vector4.One);
 
-        foreach (var renderable in world.StaticGeometry) RenderRenderable(renderable, camera);
-        foreach (var renderable in world.FeatureGeometry) RenderRenderable(renderable, camera);
-        foreach (var zone in world.ActiveInfectedZones) RenderRenderable(zone.Renderable, camera);
-        foreach (var mutation in world.ActiveCriticalMutationGeometry) RenderRenderable(mutation, camera);
-        foreach (var passage in world.ActiveLockablePassages) RenderRenderable(passage.Renderable, camera);
-        foreach (var prop in world.Props) RenderRenderable(prop.Renderable, camera);
-        foreach (var pickup in world.ActiveLootPickups) RenderRenderable(pickup.Renderable, camera);
+        foreach (var renderable in world.StaticGeometry) RenderRenderable(renderable, camera, world);
+        foreach (var renderable in world.FeatureGeometry) RenderRenderable(renderable, camera, world);
+        foreach (var zone in world.ActiveInfectedZones) RenderRenderable(zone.Renderable, camera, world);
+        foreach (var mutation in world.ActiveCriticalMutationGeometry) RenderRenderable(mutation, camera, world);
+        foreach (var passage in world.ActiveLockablePassages) RenderRenderable(passage.Renderable, camera, world);
+        foreach (var prop in world.Props) RenderRenderable(prop.Renderable, camera, world);
+        foreach (var pickup in world.ActiveLootPickups) RenderRenderable(pickup.Renderable, camera, world);
 
         foreach (var hostile in world.Hostiles)
         {
             if (hostile.IsDead) continue;
+            var ownerVisible = world.GetVisibility(hostile.OwnerModuleId) == ModuleVisibility.Visible;
+            var diff = hostile.Transform.Position - world.Player.Transform.Position;
+            var nearPlayer = diff.X * diff.X + diff.Z * diff.Z < 144f;
+            if (!ownerVisible && !nearPlayer) continue;
             RenderEntity(hostile.ModelId, hostile.Transform, hostile.Tint, camera);
         }
 
-        if (world.PowerSwitchMarker is { } powerSwitchMarker) RenderRenderable(powerSwitchMarker, camera);
-        if (world.ObjectiveMarker is { } objectiveMarker) RenderRenderable(objectiveMarker, camera);
-        if (world.ExtractionMarker is { } extractionMarker) RenderRenderable(extractionMarker, camera);
+        if (world.PowerSwitchMarker is { } powerSwitchMarker) RenderRenderable(powerSwitchMarker, camera, world);
+        if (world.ObjectiveMarker is { } objectiveMarker) RenderRenderable(objectiveMarker, camera, world);
+        if (world.ExtractionMarker is { } extractionMarker) RenderRenderable(extractionMarker, camera, world);
         foreach (var extract in world.ExtractionPoints)
         {
             if (extract.Used) continue;
-            RenderRenderable(extract.Marker, camera);
+            RenderRenderable(extract.Marker, camera, world);
         }
 
         var playerTint = world.Phase switch
@@ -130,8 +138,14 @@ public sealed class SceneRenderer(GL gl, GameResources resources, ModelRegistry 
         RenderMesh(model.Mesh, matrix, camera, tint * model.Tint);
     }
 
-    private void RenderRenderable(WorldRenderable renderable, TopDownCamera camera)
+    private void RenderRenderable(WorldRenderable renderable, TopDownCamera camera, RaidModel world)
     {
+        var visibility = world.GetVisibility(renderable.OwnerModuleId);
+        if (visibility == ModuleVisibility.Hidden) return;
+        var visibilityTint = visibility == ModuleVisibility.Discovered
+            ? new Vector4(0.35f, 0.40f, 0.48f, 1f)
+            : Vector4.One;
+
         if (!string.IsNullOrEmpty(renderable.ModelId))
         {
             var model = modelRegistry.Resolve(renderable.ModelId);
@@ -143,7 +157,7 @@ public sealed class SceneRenderer(GL gl, GameResources resources, ModelRegistry 
                         renderable.Transform.Rotation.Y + model.YawOffsetRadians,
                         renderable.Transform.Rotation.X, renderable.Transform.Rotation.Z)
                     * Matrix4x4.CreateTranslation(renderable.Transform.Position + model.Offset);
-                RenderMesh(model.Mesh, matrix, camera, renderable.Tint * model.Tint);
+                RenderMesh(model.Mesh, matrix, camera, renderable.Tint * model.Tint * visibilityTint);
                 return;
             }
         }
@@ -157,7 +171,7 @@ public sealed class SceneRenderer(GL gl, GameResources resources, ModelRegistry 
 
         if (mesh is null) return;
 
-        RenderMesh(mesh, renderable.Transform.CreateModelMatrix(), camera, renderable.Tint);
+        RenderMesh(mesh, renderable.Transform.CreateModelMatrix(), camera, renderable.Tint * visibilityTint);
     }
 
     private void RenderMesh(Mesh mesh, Matrix4x4 model, TopDownCamera camera, Vector4 tint)

@@ -14,6 +14,10 @@ uniform vec3 uFogColor;
 uniform float uFogNear;
 uniform float uFogFar;
 uniform vec3 uCameraPosition;
+uniform vec3 uPlayerPosition;
+uniform float uWallCutHeight;
+uniform float uWallCutRadius;
+uniform float uWallCutSoftness;
 uniform int uPointLightCount;
 uniform vec3 uPointLightPosition[MAX_POINT_LIGHTS];
 uniform vec3 uPointLightColor[MAX_POINT_LIGHTS];
@@ -22,6 +26,16 @@ uniform float uPointLightIntensity[MAX_POINT_LIGHTS];
 
 void main()
 {
+    if (uWallCutRadius > 0.001 && vWorldPosition.y > uWallCutHeight)
+    {
+        float xzDistance = distance(vec2(vWorldPosition.x, vWorldPosition.z),
+                                    vec2(uPlayerPosition.x, uPlayerPosition.z));
+        float heightAbove = vWorldPosition.y - uWallCutHeight;
+        float heightFactor = clamp(heightAbove / max(uWallCutSoftness, 0.05), 0.0, 1.0);
+        float radialFactor = 1.0 - clamp(xzDistance / max(uWallCutRadius, 0.01), 0.0, 1.0);
+        if (heightFactor * radialFactor > 0.65) discard;
+    }
+
     vec3 normal = normalize(vWorldNormal);
     vec3 lightDir = normalize(uLightDirection);
     float diffuse = max(dot(normal, lightDir), 0.0);

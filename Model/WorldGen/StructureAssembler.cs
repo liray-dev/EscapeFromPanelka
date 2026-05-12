@@ -40,6 +40,7 @@ public sealed class StructureAssembler
         var connectedSockets = BuildConnectedSocketSet(blueprint);
         BuildGeometryFor(sector, sector.Modules, connectedSockets);
         BuildConsoles(sector, safeBlock, serviceModule, objectiveModule);
+        BuildModuleAdjacency(sector, blueprint.Steps);
         BuildLockablePassagesFor(sector, blueprint.Steps, placedByNodeId, serviceModule, objectiveModule, rng);
         SpawnPropsFor(sector, library, sector.Modules, rng);
         BuildLightsFor(sector, sector.Modules);
@@ -48,31 +49,6 @@ public sealed class StructureAssembler
         BuildLootFor(sector, sector.Modules, objectiveModule, rng);
         ComputeBounds(sector);
         return sector;
-    }
-
-    public static IReadOnlyList<PlacedModule> AppendSteps(ProceduralSector sector, ModuleLibrary library,
-        StructureBlueprint blueprint, IReadOnlyList<BlueprintStep> newSteps, Random rng)
-    {
-        if (newSteps.Count == 0) return [];
-
-        var placedByNodeId = sector.Modules.ToDictionary(m => m.NodeId, m => m, StringComparer.OrdinalIgnoreCase);
-        var newModules = new List<PlacedModule>();
-        var beforeCount = sector.Modules.Count;
-
-        PlaceModules(sector, library, newSteps, placedByNodeId);
-        for (var i = beforeCount; i < sector.Modules.Count; i++) newModules.Add(sector.Modules[i]);
-
-        var connectedSockets = BuildConnectedSocketSet(blueprint);
-        BuildGeometryFor(sector, newModules, connectedSockets);
-        BuildLockablePassagesFor(sector, newSteps, placedByNodeId, null, null, rng);
-        SpawnPropsFor(sector, library, newModules, rng);
-        BuildLightsFor(sector, newModules);
-        BuildInfectedZonesFor(sector, newModules, rng);
-        BuildHostilesFor(sector, newModules, null, rng);
-        BuildLootFor(sector, newModules, null, rng);
-        ComputeBounds(sector);
-
-        return newModules;
     }
 
     private static void PlaceModules(ProceduralSector sector, ModuleLibrary library,
@@ -122,7 +98,8 @@ public sealed class StructureAssembler
                 Position = sector.ExtractionConsolePoint - new Vector3(0f, 0.42f, 0f),
                 Scale = new Vector3(0.42f, 1.04f, 0.30f)
             },
-            new Vector4(0.32f, 0.58f, 0.64f, 1f)));
+            new Vector4(0.32f, 0.58f, 0.64f, 1f),
+            ownerModuleId: safeBlock.NodeId));
 
         if (serviceModule != safeBlock)
             sector.FeatureGeometry.Add(new WorldRenderable(
@@ -132,7 +109,31 @@ public sealed class StructureAssembler
                     Position = sector.PowerSwitchPoint - new Vector3(0f, 0.40f, 0f),
                     Scale = new Vector3(0.36f, 1.12f, 0.30f)
                 },
-                new Vector4(0.64f, 0.52f, 0.18f, 1f)));
+                new Vector4(0.64f, 0.52f, 0.18f, 1f),
+                ownerModuleId: serviceModule.NodeId));
+    }
+
+    private static void BuildModuleAdjacency(ProceduralSector sector, IReadOnlyList<BlueprintStep> steps)
+    {
+        sector.ModuleAdjacency.Clear();
+        foreach (var step in steps)
+        {
+            if (string.IsNullOrWhiteSpace(step.ParentNodeId)) continue;
+            var passageId = $"door_{step.NodeId}";
+            AppendAdjacency(sector, step.ParentNodeId, step.NodeId, passageId);
+            AppendAdjacency(sector, step.NodeId, step.ParentNodeId, passageId);
+        }
+    }
+
+    private static void AppendAdjacency(ProceduralSector sector, string from, string to, string passageId)
+    {
+        if (!sector.ModuleAdjacency.TryGetValue(from, out var list))
+        {
+            list = [];
+            sector.ModuleAdjacency[from] = list;
+        }
+
+        list.Add(new ModuleAdjacency(to, passageId));
     }
 
     private static void BuildLockablePassagesFor(ProceduralSector sector, IReadOnlyList<BlueprintStep> steps,
@@ -166,7 +167,8 @@ public sealed class StructureAssembler
             var doorRenderable = new WorldRenderable(
                 WorldPrimitiveType.Cube,
                 new Transform { Position = doorPosition, Scale = doorScale },
-                new Vector4(0.54f, 0.58f, 0.62f, 1f));
+                new Vector4(0.54f, 0.58f, 0.62f, 1f),
+                ownerModuleId: parent.NodeId);
 
             var leadsToObjective = objectiveModule is not null
                                    && step.NodeId.Equals(objectiveModule.NodeId, StringComparison.OrdinalIgnoreCase);
@@ -181,7 +183,8 @@ public sealed class StructureAssembler
                 doorRenderable = new WorldRenderable(
                     WorldPrimitiveType.Cube,
                     new Transform { Position = doorPosition, Scale = doorScale },
-                    new Vector4(0.62f, 0.18f, 0.22f, 1f));
+                    new Vector4(0.62f, 0.18f, 0.22f, 1f),
+                    ownerModuleId: parent.NodeId);
 
             var passageId = $"door_{step.NodeId}";
             sector.LockablePassages.Add(new LockablePassage(
@@ -191,7 +194,8 @@ public sealed class StructureAssembler
                 leadsToObjective
                     ? new WorldRenderable(WorldPrimitiveType.Cube,
                         new Transform { Position = doorPosition, Scale = doorScale },
-                        new Vector4(0.66f, 0.20f, 0.18f, 1f))
+                        new Vector4(0.66f, 0.20f, 0.18f, 1f),
+                        ownerModuleId: parent.NodeId)
                     : doorRenderable,
                 initialState,
                 jamOnCritical));
@@ -271,7 +275,8 @@ public sealed class StructureAssembler
                     Position = lightPosition,
                     Scale = fixtureScale
                 },
-                fixtureTint));
+                fixtureTint,
+                ownerModuleId: module.NodeId));
 
             sector.Lights.Add(new WorldLight(
                 $"light_{module.NodeId}",
@@ -311,7 +316,8 @@ public sealed class StructureAssembler
                     Position = center + new Vector3(0f, 0.03f, 0f),
                     Scale = new Vector3(radius * 1.8f, 0.06f, radius * 1.6f)
                 },
-                new Vector4(0.42f, 0.10f, 0.16f, 1f));
+                new Vector4(0.42f, 0.10f, 0.16f, 1f),
+                ownerModuleId: module.NodeId);
 
             sector.InfectedZones.Add(new InfectedZone(
                 $"infected_{module.NodeId}",
@@ -362,7 +368,8 @@ public sealed class StructureAssembler
                     definition.MaxHealth,
                     definition.CollisionRadius,
                     size,
-                    definition.ModelId));
+                    definition.ModelId,
+                    module.NodeId));
             }
         }
     }
@@ -397,7 +404,8 @@ public sealed class StructureAssembler
                 var localPosition = new Vector3(local.X, size.Y * 0.5f + 0.06f, local.Y);
                 var transform = CreateWorldTransform(module, localPosition, Vector3.Zero, size);
                 var tint = ToTint(definition.Color);
-                var renderable = new WorldRenderable(WorldPrimitiveType.Cube, transform, tint, definition.ModelId);
+                var renderable = new WorldRenderable(WorldPrimitiveType.Cube, transform, tint, definition.ModelId,
+                    ownerModuleId: module.NodeId);
 
                 var pickup = new LootPickup(
                     $"loot_{module.NodeId}_{i}_{definition.Id}",
@@ -462,7 +470,8 @@ public sealed class StructureAssembler
             Vector3.Zero,
             new Vector3(module.Definition.Width, module.Definition.FloorHeight, module.Definition.Length));
 
-        geometry.Add(new WorldRenderable(WorldPrimitiveType.Cube, floorTransform, floorColor));
+        geometry.Add(new WorldRenderable(WorldPrimitiveType.Cube, floorTransform, floorColor,
+            ownerModuleId: module.NodeId));
     }
 
     private static void AddPerimeterWalls(List<WorldRenderable> geometry, PlacedModule module,
@@ -546,7 +555,8 @@ public sealed class StructureAssembler
         }
 
         geometry.Add(new WorldRenderable(WorldPrimitiveType.Cube,
-            CreateWorldTransform(module, localPosition, Vector3.Zero, localScale), tint));
+            CreateWorldTransform(module, localPosition, Vector3.Zero, localScale), tint,
+            ownerModuleId: module.NodeId));
     }
 
     private static void AddOpeningTop(List<WorldRenderable> geometry, PlacedModule module,
@@ -583,7 +593,8 @@ public sealed class StructureAssembler
         }
 
         geometry.Add(new WorldRenderable(WorldPrimitiveType.Cube,
-            CreateWorldTransform(module, localPosition, Vector3.Zero, localScale), tint));
+            CreateWorldTransform(module, localPosition, Vector3.Zero, localScale), tint,
+            ownerModuleId: module.NodeId));
     }
 
     private static void SpawnPropsFor(ProceduralSector sector, ModuleLibrary library,
@@ -603,7 +614,8 @@ public sealed class StructureAssembler
             var scale = new Vector3(propDefinition.Size[0], propDefinition.Size[1], propDefinition.Size[2]);
             var transform = CreateWorldTransform(module, localPosition, localRotation, scale);
             var tint = ToTint(propDefinition.Color);
-            var renderable = new WorldRenderable(WorldPrimitiveType.Cube, transform, tint);
+            var renderable = new WorldRenderable(WorldPrimitiveType.Cube, transform, tint,
+                ownerModuleId: module.NodeId);
 
             sector.Props.Add(new PropInstance(propDefinition.Id, module.NodeId, renderable));
         }

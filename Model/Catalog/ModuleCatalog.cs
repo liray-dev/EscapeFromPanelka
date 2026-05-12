@@ -17,8 +17,8 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.0f, Weight = 1,
             Connections =
             [
-                new() { Id = "east", Direction = ConnectionDirection.East, Kind = "doorway", OpeningWidth = 2.2f },
-                new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", Offset = 1.2f, OpeningWidth = 2.0f }
+                new() { Id = "east", Direction = ConnectionDirection.East, Kind = "doorway", OpeningWidth = 2.0f },
+                new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
             [
@@ -38,9 +38,9 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.18f, Weight = 7,
             Connections =
             [
-                new() { Id = "west", Direction = ConnectionDirection.West, Kind = "doorway", OpeningWidth = 2.1f },
-                new() { Id = "east", Direction = ConnectionDirection.East, Kind = "doorway", OpeningWidth = 2.1f },
-                new() { Id = "north", Direction = ConnectionDirection.North, Kind = "doorway", Offset = 0.8f, OpeningWidth = 1.8f }
+                new() { Id = "west", Direction = ConnectionDirection.West, Kind = "doorway", OpeningWidth = 2.0f },
+                new() { Id = "east", Direction = ConnectionDirection.East, Kind = "doorway", OpeningWidth = 2.0f },
+                new() { Id = "north", Direction = ConnectionDirection.North, Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
             [
@@ -140,8 +140,8 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.22f, Weight = 4,
             Connections =
             [
-                new() { Id = "north", Direction = ConnectionDirection.North, Kind = "doorway", OpeningWidth = 1.9f },
-                new() { Id = "east",  Direction = ConnectionDirection.East,  Kind = "doorway", OpeningWidth = 1.9f }
+                new() { Id = "north", Direction = ConnectionDirection.North, Kind = "doorway", OpeningWidth = 2.0f },
+                new() { Id = "east",  Direction = ConnectionDirection.East,  Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
             [
@@ -160,7 +160,7 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.18f, Weight = 2,
             Connections =
             [
-                new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", OpeningWidth = 1.9f }
+                new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
             [
@@ -179,7 +179,7 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.30f, Weight = 2,
             Connections =
             [
-                new() { Id = "west", Direction = ConnectionDirection.West, Kind = "doorway", OpeningWidth = 1.8f }
+                new() { Id = "west", Direction = ConnectionDirection.West, Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
             [
@@ -197,7 +197,7 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.18f, Weight = 3,
             Connections =
             [
-                new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", OpeningWidth = 1.8f }
+                new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
             [
@@ -256,7 +256,7 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.20f, Weight = 4,
             Connections =
             [
-                new() { Id = "west",  Direction = ConnectionDirection.West,  Kind = "doorway", OpeningWidth = 2.2f },
+                new() { Id = "west",  Direction = ConnectionDirection.West,  Kind = "doorway", OpeningWidth = 2.0f },
                 new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
@@ -355,8 +355,8 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.26f, Weight = 3,
             Connections =
             [
-                new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", OpeningWidth = 1.9f },
-                new() { Id = "east",  Direction = ConnectionDirection.East,  Kind = "doorway", OpeningWidth = 1.9f }
+                new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", OpeningWidth = 2.0f },
+                new() { Id = "east",  Direction = ConnectionDirection.East,  Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
             [
@@ -375,8 +375,8 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.34f, Weight = 3,
             Connections =
             [
-                new() { Id = "north", Direction = ConnectionDirection.North, Kind = "doorway", OpeningWidth = 1.9f },
-                new() { Id = "west",  Direction = ConnectionDirection.West,  Kind = "doorway", OpeningWidth = 1.9f }
+                new() { Id = "north", Direction = ConnectionDirection.North, Kind = "doorway", OpeningWidth = 2.0f },
+                new() { Id = "west",  Direction = ConnectionDirection.West,  Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
             [
@@ -394,7 +394,7 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.40f, Weight = 2,
             Connections =
             [
-                new() { Id = "west", Direction = ConnectionDirection.West, Kind = "doorway", OpeningWidth = 2.2f }
+                new() { Id = "west", Direction = ConnectionDirection.West, Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
             [
@@ -414,7 +414,7 @@ public static class ModuleCatalog
             InfectedZoneChance = 0.45f, Weight = 1,
             Connections =
             [
-                new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", OpeningWidth = 2.2f }
+                new() { Id = "south", Direction = ConnectionDirection.South, Kind = "doorway", OpeningWidth = 2.0f }
             ],
             PropSockets =
             [

@@ -19,6 +19,8 @@ public sealed class ProceduralSector
     public List<Hostile> Hostiles { get; } = [];
     public List<LootPickup> Loot { get; } = [];
     public List<Container> Containers { get; } = [];
+    public Dictionary<string, List<ModuleAdjacency>> ModuleAdjacency { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
     public Vector3 PlayerSpawn { get; set; }
     public Vector3 SafeBlockCenter { get; set; }
     public Vector3 ExtractionConsolePoint { get; set; }

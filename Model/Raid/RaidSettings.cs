@@ -32,7 +32,6 @@ public sealed record RaidSettings
 
     public int MinModulesPerSector { get; init; } = 40;
     public int MaxModulesPerSector { get; init; } = 60;
-    public int ModuleCap { get; init; } = 220;
 
     public static RaidSettings Default { get; } = new();
 }
