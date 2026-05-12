@@ -17,6 +17,7 @@ public sealed class SceneRenderer(GL gl, GameResources resources, ModelRegistry 
     private Mesh? _gridMesh;
     private Mesh? _planeMesh;
     private ShaderProgram? _shader;
+    private SwingRibbon? _swingRibbon;
 
     public void Dispose()
     {
@@ -24,6 +25,7 @@ public sealed class SceneRenderer(GL gl, GameResources resources, ModelRegistry 
         _cubeMesh?.Dispose();
         _planeMesh?.Dispose();
         _shader?.Dispose();
+        _swingRibbon?.Dispose();
     }
 
     public void Load()
@@ -41,6 +43,13 @@ public sealed class SceneRenderer(GL gl, GameResources resources, ModelRegistry 
 
         var grid = MeshFactory.CreateGrid(32, 1f, 0.021f);
         _gridMesh = new Mesh(gl, grid.Vertices, grid.Indices, grid.PrimitiveType);
+
+        _swingRibbon = new SwingRibbon(gl, resources);
+    }
+
+    public void DrawSwingRibbon(IReadOnlyList<SwingSample> samples, TopDownCamera camera)
+    {
+        _swingRibbon?.Draw(samples, camera);
     }
 
     public void Resize(int width, int height)
@@ -181,26 +190,6 @@ public sealed class SceneRenderer(GL gl, GameResources resources, ModelRegistry 
         _shader.SetMatrix4("uMvp", mvp);
         _shader.SetVector4("uTint", tint);
         mesh.Draw();
-    }
-
-    public void DrawTracer(Vector3 from, Vector3 to, float width, Vector4 tint, TopDownCamera camera)
-    {
-        if (_shader is null || _cubeMesh is null) return;
-
-        var diff = to - from;
-        var length = diff.Length();
-        if (length < 0.01f) return;
-
-        var midpoint = (from + to) * 0.5f;
-        var yaw = MathF.Atan2(diff.X, diff.Z);
-        var matrix = Matrix4x4.CreateScale(width, width, length)
-                     * Matrix4x4.CreateFromAxisAngle(Vector3.UnitY, yaw)
-                     * Matrix4x4.CreateTranslation(midpoint);
-
-        gl.DepthMask(false);
-        _shader.Use();
-        RenderMesh(_cubeMesh, matrix, camera, tint);
-        gl.DepthMask(true);
     }
 
     private void ApplyPointLights(RaidModel world, SceneEnvironment environment)

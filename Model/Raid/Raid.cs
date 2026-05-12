@@ -467,8 +467,8 @@ public sealed class Raid
     private void ResolveAttack(AttackResult attack)
     {
         var origin = Player.Transform.Position;
-        var forward = new Vector2(MathF.Sin(Player.YawRadians), MathF.Cos(Player.YawRadians));
-        if (forward.LengthSquared() <= 0.0001f) forward = Vector2.UnitY;
+        var forward = new Vector2(-MathF.Sin(Player.YawRadians), -MathF.Cos(Player.YawRadians));
+        if (forward.LengthSquared() <= 0.0001f) forward = -Vector2.UnitY;
 
         var halfFovCos = MathF.Cos(MathF.PI / 180f * _config.AttackHalfFovDegrees);
         var hitsLanded = 0;
