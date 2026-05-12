@@ -1,8 +1,10 @@
 using EFP.App;
-using EFP.Input;
-using EFP.Rendering;
-using EFP.Resources;
+using EFP.Model.Profile;
+using EFP.Platform;
 using EFP.Utilities;
+using EFP.View.Rendering;
+using EFP.View.Rendering.Models;
+using EFP.View.Resources;
 using Silk.NET.Windowing;
 
 namespace EFP.GameState;
@@ -16,7 +18,10 @@ public interface IGameStateContext
     SceneRenderer SceneRenderer { get; }
     UiRenderer UiRenderer { get; }
     GameResources Resources { get; }
+    ModelRegistry ModelRegistry { get; }
     FrameStats FrameStats { get; }
+    PlayerProfile Profile { get; }
     void RequestStateChange(AppStateId nextState);
     void RequestExit();
+    void SaveProfile();
 }

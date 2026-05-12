@@ -1,12 +1,12 @@
 using EFP.App;
-using EFP.UI.Screens;
+using EFP.View.Screens;
 
 namespace EFP.GameState;
 
 public sealed class MainMenuState(IGameStateContext context) : IGameState
 {
     private readonly MainMenuScreen _screen = new(context,
-        () => context.RequestStateChange(AppStateId.Gameplay),
+        () => context.RequestStateChange(AppStateId.Lobby),
         context.RequestExit);
 
     public string Name => "MainMenuState";

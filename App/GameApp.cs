@@ -1,9 +1,10 @@
 using EFP.GameState;
-using EFP.Input;
+using EFP.Model.Profile;
 using EFP.Platform;
-using EFP.Rendering;
-using EFP.Resources;
 using EFP.Utilities;
+using EFP.View.Rendering;
+using EFP.View.Rendering.Models;
+using EFP.View.Resources;
 using Silk.NET.Input;
 using Silk.NET.Maths;
 using Silk.NET.OpenGL;
@@ -13,7 +14,9 @@ namespace EFP.App;
 
 public sealed class GameApp : IGameStateContext, IDisposable
 {
+    private readonly string? _configPath;
     private readonly GameHostWindow _hostWindow;
+    private readonly string _profilePath;
     private readonly StateMachine _stateMachine = new();
     private DebugOverlay? _debugOverlay;
     private bool _disposed;
@@ -21,6 +24,7 @@ public sealed class GameApp : IGameStateContext, IDisposable
     private GL? _gl;
     private InputService? _input;
     private bool _isLoaded;
+    private ModelRegistry? _modelRegistry;
     private bool _pendingExit;
     private AppStateId? _pendingStateChange;
     private GameResources? _resources;
@@ -28,9 +32,12 @@ public sealed class GameApp : IGameStateContext, IDisposable
     private double _tickAccumulator;
     private UiRenderer? _uiRenderer;
 
-    public GameApp(GameConfig config)
+    public GameApp(GameConfig config, string? configPath = null)
     {
+        _configPath = configPath;
         Config = config;
+        _profilePath = ResolveProfilePath(configPath);
+        Profile = ProfileStore.LoadOrCreate(_profilePath);
         ApplyDebugDefaults(config);
         _hostWindow = new GameHostWindow(config.Window);
 
@@ -52,6 +59,7 @@ public sealed class GameApp : IGameStateContext, IDisposable
         _debugOverlay?.Dispose();
         _uiRenderer?.Dispose();
         _sceneRenderer?.Dispose();
+        _modelRegistry?.Dispose();
         _resources?.Dispose();
         _input?.Dispose();
         _gl?.Dispose();
@@ -71,9 +79,18 @@ public sealed class GameApp : IGameStateContext, IDisposable
     public GameResources Resources =>
         _resources ?? throw new InvalidOperationException("Resources are not initialized.");
 
+    public ModelRegistry ModelRegistry =>
+        _modelRegistry ?? throw new InvalidOperationException("Model registry is not initialized.");
+
     public FrameStats FrameStats { get; } = new();
+    public PlayerProfile Profile { get; }
 
     public IWindow Window => _hostWindow.Window;
+
+    public void SaveProfile()
+    {
+        ProfileStore.Save(_profilePath, Profile);
+    }
 
     public void RequestStateChange(AppStateId nextState)
     {
@@ -98,12 +115,15 @@ public sealed class GameApp : IGameStateContext, IDisposable
         _gl = window.CreateOpenGL();
         var inputContext = window.CreateInput();
         _input = new InputService(inputContext);
-        _debugOverlay = new DebugOverlay(_gl, window, inputContext, DebugSettings);
+        _debugOverlay = new DebugOverlay(_gl, window, inputContext, DebugSettings, SaveDebugSettings);
 
         _resources = new GameResources(Path.Combine(AppContext.BaseDirectory, "assets"));
         _resources.Initialize(_gl);
 
-        _sceneRenderer = new SceneRenderer(_gl, _resources);
+        _modelRegistry = new ModelRegistry(_gl, _resources);
+        _modelRegistry.RegisterDefaults();
+
+        _sceneRenderer = new SceneRenderer(_gl, _resources, _modelRegistry);
         _sceneRenderer.Load();
 
         _uiRenderer = new UiRenderer(_gl, _resources);
@@ -120,7 +140,11 @@ public sealed class GameApp : IGameStateContext, IDisposable
 
         _input.BeginFrame();
 
-        if (_input.IsKeyPressed(Key.F1)) DebugSettings.Enabled = !DebugSettings.Enabled;
+        if (_input.IsKeyPressed(Key.F1))
+        {
+            DebugSettings.Enabled = !DebugSettings.Enabled;
+            SaveDebugSettings();
+        }
 
         FrameStats.Update(deltaTime);
         _debugOverlay?.Update((float)deltaTime, _stateMachine.CurrentStateName, FrameStats);
@@ -174,16 +198,50 @@ public sealed class GameApp : IGameStateContext, IDisposable
         return stateId switch
         {
             AppStateId.MainMenu => new MainMenuState(this),
+            AppStateId.Lobby => new LobbyState(this),
             AppStateId.Gameplay => new GameplayState(this),
             _ => throw new ArgumentOutOfRangeException(nameof(stateId), stateId, null)
         };
     }
 
+    private static string ResolveProfilePath(string? configPath)
+    {
+        var directory = string.IsNullOrWhiteSpace(configPath)
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "EscapeFromPanelka")
+            : Path.GetDirectoryName(configPath) ?? AppContext.BaseDirectory;
+        return Path.Combine(directory, "profile.json");
+    }
+
     private void ApplyDebugDefaults(GameConfig config)
     {
-        DebugSettings.CameraYawDegrees = config.Camera.YawDegrees;
-        DebugSettings.CameraPitchDegrees = config.Camera.PitchDegrees;
-        DebugSettings.CameraDistance = config.Camera.Distance;
-        DebugSettings.CameraHeight = config.Camera.Height;
+        config.Debug.ApplyTo(DebugSettings);
+    }
+
+    private void SaveDebugSettings()
+    {
+        if (string.IsNullOrWhiteSpace(_configPath)) return;
+
+        Config.Debug.CaptureFrom(DebugSettings);
+        GameConfigLoader.Save(_configPath, Config);
+
+        var sourceConfigPath = TryFindSourceConfigPath();
+        if (!string.IsNullOrWhiteSpace(sourceConfigPath)
+            && !Path.GetFullPath(sourceConfigPath).Equals(Path.GetFullPath(_configPath),
+                StringComparison.OrdinalIgnoreCase))
+            GameConfigLoader.Save(sourceConfigPath, Config);
+    }
+
+    private static string? TryFindSourceConfigPath()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "EFP.csproj")))
+                return Path.Combine(current.FullName, "assets", "config", "gameconfig.json");
+
+            current = current.Parent;
+        }
+
+        return null;
     }
 }

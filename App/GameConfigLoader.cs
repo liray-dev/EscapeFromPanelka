@@ -29,7 +29,7 @@ public static class GameConfigLoader
         return JsonSerializer.Deserialize<GameConfig>(json, SerializerOptions) ?? new GameConfig();
     }
 
-    private static void Save(string path, GameConfig config)
+    public static void Save(string path, GameConfig config)
     {
         var json = JsonSerializer.Serialize(config, SerializerOptions);
         File.WriteAllText(path, json);
